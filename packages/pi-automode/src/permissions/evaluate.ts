@@ -45,7 +45,7 @@ interface SpecifierMatcher {
   covers: (form: string, specifier: string) => boolean;
 }
 
-const PATH_TOOLS = new Set(["read", "write", "edit", "ls", "find", "grep"]);
+export const PATH_TOOLS = new Set(["read", "write", "edit", "ls", "find", "grep"]);
 // These read everything below the given directory.
 const DIRECTORY_TOOLS = new Set(["ls", "find", "grep"]);
 

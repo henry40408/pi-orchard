@@ -3,9 +3,13 @@ import type { Config } from "./config/schema.ts";
 import { evaluatePermissions, isInsideWorkingDirectory } from "./permissions/evaluate.ts";
 import type { PathContext } from "./permissions/paths.ts";
 
+/** Which step of `decide` produced the outcome. `fallback` is set by the hook when `decide` threw. */
+export type OutcomeSource = "off" | "symlink" | "deny" | "mode" | "rule" | "shortcut" | "classifier" | "fallback";
+
 /** What to do with a tool call. `ask` means the user decides. */
 export interface Outcome {
   action: "allow" | "ask" | "block";
+  source: OutcomeSource;
   /** Shown to the user, and to the model when the call is blocked. */
   reason: string;
 }
@@ -29,30 +33,35 @@ const VERDICT_ACTIONS = { allow: "allow", ask: "ask", deny: "block" } as const;
  */
 export async function decide(request: DecideRequest): Promise<Outcome> {
   const { config, toolName, input, pathContext } = request;
-  if (config.mode === "off") return { action: "allow", reason: "automode is off" };
+  if (config.mode === "off") return { action: "allow", source: "off", reason: "automode is off" };
 
   const evaluation = evaluatePermissions({ permissions: config.permissions, toolName, input, pathContext });
   if (evaluation.decision === "symlink") {
     return {
       action: "block",
+      source: "symlink",
       reason: `This path goes through a symlink. Use the real path instead: ${evaluation.realPath}`,
     };
   }
   if (evaluation.decision === "deny") {
-    return { action: "block", reason: `Blocked by the deny rule ${evaluation.rule}` };
+    return { action: "block", source: "deny", reason: `Blocked by the deny rule ${evaluation.rule}` };
   }
-  if (config.mode === "ask") return { action: "ask", reason: "automode is set to ask" };
+  if (config.mode === "ask") return { action: "ask", source: "mode", reason: "automode is set to ask" };
 
-  if (evaluation.decision === "ask") return { action: "ask", reason: `The ask rule ${evaluation.rule} applies` };
-  if (evaluation.decision === "allow") return { action: "allow", reason: `Allowed by the rule ${evaluation.rule}` };
+  if (evaluation.decision === "ask") {
+    return { action: "ask", source: "rule", reason: `The ask rule ${evaluation.rule} applies` };
+  }
+  if (evaluation.decision === "allow") {
+    return { action: "allow", source: "rule", reason: `Allowed by the rule ${evaluation.rule}` };
+  }
 
   if (config.allowInsideWorkingDirectory && isInsideWorkingDirectory(toolName, input, pathContext)) {
-    return { action: "allow", reason: "The path is inside the working directory" };
+    return { action: "allow", source: "shortcut", reason: "The path is inside the working directory" };
   }
   if (config.mode === "rules" || !config.classifier.enabled) {
-    return { action: "ask", reason: "No rule allows this call" };
+    return { action: "ask", source: "mode", reason: "No rule allows this call" };
   }
 
   const verdict = await request.classifyAction();
-  return { action: VERDICT_ACTIONS[verdict.decision], reason: verdict.reason };
+  return { action: VERDICT_ACTIONS[verdict.decision], source: "classifier", reason: verdict.reason };
 }

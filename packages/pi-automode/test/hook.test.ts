@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 import type { CompleteFn } from "../src/classifier/classify.ts";
 import { createToolCallHandler, type HookContext } from "../src/hook.ts";
+import { DecisionHistory } from "../src/history.ts";
 import { AutomodeState } from "../src/state.ts";
 
 interface Answers {
@@ -32,12 +33,61 @@ function setup(configText: string | undefined, answers: Answers = {}) {
     sessionManager: { getBranch: () => [] },
   };
   const complete: CompleteFn = answers.complete ?? (async () => '{"decision":"allow","reason":"fine"}');
-  const handler = createToolCallHandler({ state: new AutomodeState(agentDir), completeFor: () => complete });
-  return { handler, context, confirms };
+  const history = new DecisionHistory();
+  const handler = createToolCallHandler({ state: new AutomodeState(agentDir), completeFor: () => complete, history });
+  return { handler, context, confirms, history };
 }
 
 const bash = (command: string) => ({ toolName: "bash", input: { command } });
 const soft: CompleteFn = async () => '{"decision":"soft_deny","reason":"pushes"}';
+
+describe("decision history", () => {
+  it("records the source of an automatic decision", async () => {
+    const { handler, context, history } = setup('{"permissions":{"deny":["Bash(rm:*)"]}}');
+    await handler(bash("rm x"), context);
+    const [record] = history.recent(1);
+    assert.equal(record?.toolName, "bash");
+    assert.equal(record?.outcome.action, "block");
+    assert.equal(record?.outcome.source, "deny");
+    assert.equal(record?.answer, undefined);
+  });
+
+  it("records what the user answered", async () => {
+    const yes = setup(undefined, { complete: soft, confirm: true });
+    await yes.handler(bash("git push"), yes.context);
+    assert.equal(yes.history.recent(1)[0]?.answer, "allowed");
+
+    const no = setup(undefined, { complete: soft, confirm: false });
+    await no.handler(bash("git push"), no.context);
+    assert.equal(no.history.recent(1)[0]?.answer, "denied");
+  });
+
+  it("records that there was nobody to ask", async () => {
+    const { handler, context, history } = setup(undefined, { complete: soft, hasUI: false });
+    await handler(bash("git push"), context);
+    assert.equal(history.recent(1)[0]?.answer, "no-ui");
+  });
+
+  it("records the classifier as the source of its verdict", async () => {
+    const { handler, context, history } = setup(undefined);
+    await handler(bash("make"), context);
+    assert.equal(history.recent(1)[0]?.outcome.source, "classifier");
+  });
+
+  it("records a call whose confirm dialog fails, and still fails", async () => {
+    const { handler, context, history } = setup(undefined, { complete: soft });
+    const failing = { ...context, ui: { confirm: async () => Promise.reject(new Error("aborted")) } };
+    await assert.rejects(handler(bash("git push"), failing), /aborted/);
+    assert.equal(history.recent(1)[0]?.answer, "denied");
+  });
+
+  it("records an unexpected error as a fallback", async () => {
+    const { handler, context, history } = setup(undefined);
+    const broken = { ...context, get cwd(): string { throw new Error("boom"); } };
+    await handler(bash("make"), broken);
+    assert.equal(history.recent(1)[0]?.outcome.source, "fallback");
+  });
+});
 
 describe("tool_call handler", () => {
   it("lets an allowed call run", async () => {

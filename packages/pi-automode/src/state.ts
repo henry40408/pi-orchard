@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { loadConfig, type LoadedConfig } from "./config/load.ts";
 import { MODES, type Config, type Mode } from "./config/schema.ts";
+import { RULE_PATTERN } from "./permissions/rule.ts";
 
 export interface AutomodeStatus {
   mode: Mode;
@@ -38,16 +39,26 @@ export function parentModeFromEnvironment(environment: Record<string, string | u
   return isMode(value) ? value : "ask";
 }
 
+const RULE_KINDS = ["deny", "ask", "allow"] as const;
+export type RuleKind = (typeof RULE_KINDS)[number];
+export type PermissionRules = Record<RuleKind, string[]>;
+
+const RULE_REGEXP = new RegExp(RULE_PATTERN);
+const MODEL_REGEXP = /^[^/\s]+\/\S+$/;
+
 /**
  * The config of the running session. It is read again for a new working
- * directory and on `reload`. `setMode` changes the mode for this session only;
- * only `reload` clears it, so a change of directory cannot undo it.
+ * directory and on `reload`. The mode, the session rules and the classifier
+ * override change this session only; only `reload` clears them, so a change of
+ * directory cannot undo them.
  */
 export class AutomodeState {
   #agentDir: string;
   #cwd: string | undefined;
   #loaded: LoadedConfig | undefined;
   #modeOverride: Mode | undefined;
+  #sessionRules: PermissionRules = { allow: [], ask: [], deny: [] };
+  #classifierOverride: { enabled?: boolean; model?: string } = {};
   #parentMode: Mode | undefined;
 
   constructor(agentDir: string, parentMode?: Mode) {
@@ -57,6 +68,8 @@ export class AutomodeState {
 
   reload(cwd: string): LoadedConfig {
     this.#modeOverride = undefined;
+    this.#sessionRules = { allow: [], ask: [], deny: [] };
+    this.#classifierOverride = {};
     return this.#load(cwd);
   }
 
@@ -74,9 +87,78 @@ export class AutomodeState {
   config(cwd: string): Config {
     const { config, errors } = this.#ensureLoaded(cwd);
     // An invalid file must keep the mode at ask, whatever was set before.
-    const chosen = errors.length === 0 && this.#modeOverride ? this.#modeOverride : config.mode;
-    const mode = this.#parentMode ? stricterMode(chosen, this.#parentMode) : chosen;
+    // Session deny and ask rules only make the guard stricter, so they stay.
+    if (errors.length > 0) {
+      const { allow } = config.permissions;
+      const { ask, deny } = this.#sessionRules;
+      return this.#withParentFloor({
+        ...config,
+        permissions: { allow, ask: [...config.permissions.ask, ...ask], deny: [...config.permissions.deny, ...deny] },
+      });
+    }
+    return this.#withParentFloor({
+      ...config,
+      mode: this.#modeOverride ?? config.mode,
+      permissions: {
+        allow: [...config.permissions.allow, ...this.#sessionRules.allow],
+        ask: [...config.permissions.ask, ...this.#sessionRules.ask],
+        deny: [...config.permissions.deny, ...this.#sessionRules.deny],
+      },
+      classifier: { ...config.classifier, ...this.#classifierOverride },
+    });
+  }
+
+  #withParentFloor(config: Config): Config {
+    if (!this.#parentMode) return config;
+    const mode = stricterMode(config.mode, this.#parentMode);
     return mode === config.mode ? config : { ...config, mode };
+  }
+
+  /** The permission rules in effect; `session` marks those added with `addRule`. */
+  rulesInEffect(cwd: string): Array<{ kind: RuleKind; rule: string; session: boolean }> {
+    const { config, errors } = this.#ensureLoaded(cwd);
+    return RULE_KINDS.flatMap((kind) => {
+      // Matches `config()`: session allow rules do not count while a file is invalid.
+      const sessionRules = kind === "allow" && errors.length > 0 ? [] : this.#sessionRules[kind];
+      return [
+        ...config.permissions[kind].map((rule) => ({ kind, rule, session: false })),
+        ...sessionRules.map((rule) => ({ kind, rule, session: true })),
+      ];
+    });
+  }
+
+  /** A rule lasts until `reload`. Refuses while a config file is invalid. */
+  addRule(cwd: string, kind: RuleKind, rule: string): string | undefined {
+    const refusal = this.#refusalForInvalidConfig(cwd);
+    if (refusal) return refusal;
+    if (!RULE_REGEXP.test(rule)) return `"${rule}" is not a permission rule. Write it as tool or tool(specifier), e.g. bash(git push:*)`;
+    if (!this.#sessionRules[kind].includes(rule)) this.#sessionRules[kind].push(rule);
+    return undefined;
+  }
+
+  setClassifierEnabled(cwd: string, enabled: boolean): string | undefined {
+    const refusal = this.#refusalForInvalidConfig(cwd);
+    if (refusal) return refusal;
+    this.#classifierOverride.enabled = enabled;
+    return undefined;
+  }
+
+  /** `undefined` goes back to the configured model. */
+  setClassifierModel(cwd: string, model: string | undefined): string | undefined {
+    const refusal = this.#refusalForInvalidConfig(cwd);
+    if (refusal) return refusal;
+    if (model === undefined) {
+      delete this.#classifierOverride.model;
+      return undefined;
+    }
+    if (!MODEL_REGEXP.test(model)) return `"${model}" is not a model. Write it as provider/id`;
+    this.#classifierOverride.model = model;
+    return undefined;
+  }
+
+  #refusalForInvalidConfig(cwd: string): string | undefined {
+    if (this.#ensureLoaded(cwd).errors.length === 0) return undefined;
+    return "A config file is invalid. Fix it and run /automode reload first.";
   }
 
   problems(cwd: string): { errors: string[]; ignored: string[] } {
@@ -91,7 +173,8 @@ export class AutomodeState {
 
   /** Refuses while a config file is invalid, so a broken file cannot be hidden by a command. */
   setMode(cwd: string, mode: Mode): string | undefined {
-    if (this.#ensureLoaded(cwd).errors.length > 0) return "A config file is invalid. Fix it and run /automode reload first.";
+    const refusal = this.#refusalForInvalidConfig(cwd);
+    if (refusal) return refusal;
     if (this.#parentMode && stricterMode(mode, this.#parentMode) !== mode) {
       return `The parent session runs in ${this.#parentMode} mode; this session cannot be looser.`;
     }

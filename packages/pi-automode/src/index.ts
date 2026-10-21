@@ -1,9 +1,10 @@
 import { fileURLToPath } from "node:url";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { COMMAND_ARGUMENTS, runCommand } from "./command.ts";
+import { completeArguments, MENU_ITEMS, runCommand } from "./command.ts";
 import { FOOTER_KEY, footerText } from "./footer.ts";
 import { answerQueries, announceStatus, type StatusMessage } from "./handshake.ts";
 import { createToolCallHandler } from "./hook.ts";
+import { DecisionHistory } from "./history.ts";
 import { createPiComplete } from "./model.ts";
 import { AutomodeState, parentModeFromEnvironment } from "./state.ts";
 
@@ -11,6 +12,7 @@ const ENTRY_PATH = fileURLToPath(import.meta.url);
 
 export default function (pi: ExtensionAPI): void {
   const state = new AutomodeState(getAgentDir(), parentModeFromEnvironment(process.env));
+  const history = new DecisionHistory();
 
   // If the status cannot be built (say, the config cannot be read), a silent
   // handler would look like "automode is not installed". Report the strictest mode instead.
@@ -38,16 +40,29 @@ export default function (pi: ExtensionAPI): void {
     "tool_call",
     createToolCallHandler({
       state,
+      history,
       completeFor: (context, classifier) => createPiComplete(context, classifier),
     }),
   );
 
+  // Without arguments, a person picks from a menu; with no UI the command shows the status.
+  // `undefined` means the person closed the menu.
+  async function argumentsFromMenu(context: Pick<ExtensionContext, "hasUI" | "ui">): Promise<string | undefined> {
+    if (!context.hasUI) return "";
+    const choice = await context.ui.select(
+      "automode",
+      MENU_ITEMS.map((item) => item.label),
+    );
+    return MENU_ITEMS.find((item) => item.label === choice)?.args;
+  }
+
   pi.registerCommand("automode", {
-    description: "Show or change the automode setting: status, reload, auto, rules, ask, off",
-    getArgumentCompletions: (prefix) =>
-      COMMAND_ARGUMENTS.filter((word) => word.startsWith(prefix)).map((word) => ({ value: word, label: word })),
+    description: "Show or change automode: status, mode, why, check, allow, ask, deny, rules, classifier, reload",
+    getArgumentCompletions: completeArguments,
     handler: async (args, context) => {
-      const result = runCommand(args, state, context.cwd);
+      const chosen = args.trim() === "" ? await argumentsFromMenu(context) : args;
+      if (chosen === undefined) return;
+      const result = await runCommand({ args: chosen, cwd: context.cwd, state, history });
       context.ui.notify(result.message, result.type);
       publishStatus(context);
     },

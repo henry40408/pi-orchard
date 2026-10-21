@@ -4,6 +4,7 @@ import { collectConversation, type ContextEntry } from "./classifier/context.ts"
 import { classifierRules } from "./classifier/defaults.ts";
 import type { Config } from "./config/schema.ts";
 import { decide, type Outcome } from "./decide.ts";
+import type { DecisionHistory, UserAnswer } from "./history.ts";
 import { createPathContext } from "./permissions/paths.ts";
 import type { AutomodeState } from "./state.ts";
 
@@ -19,6 +20,8 @@ export interface HookContext {
 export interface HookDependencies<Context extends HookContext> {
   state: AutomodeState;
   completeFor: (context: Context, classifier: Config["classifier"]) => CompleteFn;
+  /** Every decision is recorded here, for `/automode why`. */
+  history?: DecisionHistory;
 }
 
 type ToolCall = Pick<ToolCallEvent, "toolName" | "input">;
@@ -36,12 +39,27 @@ function describeCall(event: ToolCall): string {
   return `${event.toolName} ${JSON.stringify(event.input, null, 2) ?? ""}`;
 }
 
-async function askUser(context: HookContext, event: ToolCall, outcome: Outcome): Promise<ToolCallEventResult | undefined> {
-  if (!context.hasUI) return { block: true, reason: `${outcome.reason}, and there is no user to ask` };
+interface Resolution {
+  result: ToolCallEventResult | undefined;
+  /** Set only when the outcome was `ask`. */
+  answer?: UserAnswer;
+}
+
+async function askUser(context: HookContext, event: ToolCall, outcome: Outcome): Promise<Resolution> {
+  if (!context.hasUI) {
+    return { result: { block: true, reason: `${outcome.reason}, and there is no user to ask` }, answer: "no-ui" };
+  }
   const allowed = await context.ui.confirm("Allow this tool call?", `${describeCall(event)}\n\nWhy automode asks: ${outcome.reason}`, {
     signal: context.signal,
   });
-  return allowed ? undefined : { block: true, reason: "The user did not allow this tool call" };
+  if (allowed) return { result: undefined, answer: "allowed" };
+  return { result: { block: true, reason: "The user did not allow this tool call" }, answer: "denied" };
+}
+
+async function resolve(context: HookContext, event: ToolCall, outcome: Outcome): Promise<Resolution> {
+  if (outcome.action === "allow") return { result: undefined };
+  if (outcome.action === "block") return { result: { block: true, reason: outcome.reason } };
+  return askUser(context, event, outcome);
 }
 
 /**
@@ -71,11 +89,18 @@ export function createToolCallHandler<Context extends HookContext>(dependencies:
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      outcome = { action: "ask", reason: `automode failed: ${message}` };
+      outcome = { action: "ask", source: "fallback", reason: `automode failed: ${message}` };
     }
 
-    if (outcome.action === "allow") return undefined;
-    if (outcome.action === "block") return { block: true, reason: outcome.reason };
-    return askUser(context, event, outcome);
+    const history = dependencies.history;
+    try {
+      const { result, answer } = await resolve(context, event, outcome);
+      history?.record({ toolName: event.toolName, input: event.input, outcome, answer });
+      return result;
+    } catch (error) {
+      // The user's confirm failed (say, it was aborted): keep the trace, then fail as before.
+      history?.record({ toolName: event.toolName, input: event.input, outcome, answer: "denied" });
+      throw error;
+    }
   };
 }
