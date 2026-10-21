@@ -425,20 +425,28 @@ const COMPOSE_EXEC_OPTIONS: OptionsWithValue = {
  */
 function embeddedCommand(words: string[]): EmbeddedCommand {
   let start = 0;
-  for (;;) {
-    const rest = words.slice(start);
-    let next = start + (rest.length - withoutWrappers(rest).length);
-    const hop = commandAfterHop(words.slice(next));
-    if (hop?.remoteShell) return { start: next + hop.start, remoteShell: true };
-    if (hop) {
-      next += hop.start;
-    } else {
-      const afterSeparator = afterContainerSeparator(words.slice(next));
-      if (afterSeparator !== undefined) next = words.length - afterSeparator.length;
-    }
-    if (next === start) return { start, remoteShell: false };
-    start = next;
+  let step = embeddedCommandStep(words, start);
+  // Each pass moves `start` forward, so the loop ends at the end of the words.
+  while (!step.remoteShell && step.start !== start) {
+    start = step.start;
+    step = embeddedCommandStep(words, start);
   }
+  return step;
+}
+
+// One layer: skips wrappers, then one ssh or container hop or one `--` separator.
+function embeddedCommandStep(words: string[], start: number): EmbeddedCommand {
+  const rest = words.slice(start);
+  let next = start + (rest.length - withoutWrappers(rest).length);
+  const hop = commandAfterHop(words.slice(next));
+  if (hop?.remoteShell) return { start: next + hop.start, remoteShell: true };
+  if (hop) {
+    next += hop.start;
+  } else {
+    const afterSeparator = afterContainerSeparator(words.slice(next));
+    if (afterSeparator !== undefined) next = words.length - afterSeparator.length;
+  }
+  return { start: next, remoteShell: false };
 }
 
 /** The command that `ssh HOST CMD` or `docker exec CONTAINER CMD` runs, if `words` is one of them. */
