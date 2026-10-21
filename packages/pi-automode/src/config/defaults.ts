@@ -1,6 +1,6 @@
 import type { Config, ConfigFile } from "./schema.ts";
 
-// "$defaults" 的內容由分類器階段展開，這裡只保留標記。
+// The classifier expands "$defaults" later; this module only keeps the marker.
 export const DEFAULTS_MARKER = "$defaults";
 
 export const DEFAULT_CONFIG: Config = {
@@ -20,7 +20,7 @@ export const DEFAULT_CONFIG: Config = {
   log: { enabled: false, classifierIo: false },
 };
 
-/** 把設定檔內容疊在預設值上。 */
+/** Layers the contents of a config file over the defaults. */
 export function resolveConfig(file: ConfigFile): Config {
   const base = structuredClone(DEFAULT_CONFIG);
   return {

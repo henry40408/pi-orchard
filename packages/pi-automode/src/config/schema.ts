@@ -5,12 +5,12 @@ export const REASONING_LEVELS = ["low", "medium", "high", "xhigh", "max"] as con
 
 const RuleList = Type.Array(Type.String({ minLength: 1 }));
 
-// 直接對 .map 的結果建 Union 會讓 TypeBox 推不出字面型別。
+// A Union built directly from a .map result loses the literal types in TypeBox.
 function oneOf<T extends string>(values: readonly T[]) {
   return Type.Unsafe<T>(Type.Union(values.map((value) => Type.Literal(value))));
 }
 
-// additionalProperties: false 讓拼錯的 key 直接報錯，而不是默默失效（例如 "dney"）。
+// additionalProperties: false makes a misspelled key (e.g. "dney") an error instead of silently doing nothing.
 export const ConfigFileSchema = Type.Object(
   {
     mode: Type.Optional(oneOf(MODES)),
@@ -66,14 +66,14 @@ export type ConfigFile = Type.Static<typeof ConfigFileSchema>;
 export type Mode = (typeof MODES)[number];
 export type ReasoningLevel = (typeof REASONING_LEVELS)[number];
 
-/** 所有欄位都已補上預設值的設定。 */
+/** A config with every field filled in from the defaults. */
 export interface Config {
   mode: Mode;
   allowInsideWorkingDirectory: boolean;
   permissions: { allow: string[]; ask: string[]; deny: string[] };
   classifier: {
     enabled: boolean;
-    /** 未設定時使用目前 session 的模型。 */
+    /** When unset, the current session's model is used. */
     model?: string;
     reasoningLevel: ReasoningLevel;
     timeoutMs: number;

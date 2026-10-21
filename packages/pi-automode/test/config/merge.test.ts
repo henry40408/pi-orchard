@@ -10,19 +10,19 @@ const user = resolveConfig({
 });
 
 describe("applyProjectConfig", () => {
-  it("不帶任何設定時維持使用者層", () => {
+  it("keeps the user layer when the project config is empty", () => {
     const { config, ignored } = applyProjectConfig(user, {});
     expect(config).toEqual(user);
     expect(ignored).toEqual([]);
   });
 
-  it("不修改傳入的使用者設定", () => {
+  it("does not mutate the user config it receives", () => {
     const snapshot = structuredClone(user);
     applyProjectConfig(user, { permissions: { deny: ["read(./.env*)"] } });
     expect(user).toEqual(snapshot);
   });
 
-  it("deny 與 ask 取聯集並去除重複", () => {
+  it("unions deny and ask without duplicates", () => {
     const { config } = applyProjectConfig(user, {
       permissions: { deny: ["bash(sudo:*)", "read(./.env*)"], ask: ["write(./package.json)"] },
     });
@@ -30,7 +30,7 @@ describe("applyProjectConfig", () => {
     expect(config.permissions.ask).toEqual(["bash(git push:*)", "write(./package.json)"]);
   });
 
-  it("忽略專案層的 allow", () => {
+  it("ignores allow from the project layer", () => {
     const { config, ignored } = applyProjectConfig(user, {
       permissions: { allow: ["bash(rm:*)"] },
     });
@@ -39,28 +39,28 @@ describe("applyProjectConfig", () => {
   });
 
   describe("mode", () => {
-    it("接受更嚴格的 mode", () => {
+    it("accepts a stricter mode", () => {
       expect(applyProjectConfig(user, { mode: "rules" }).config.mode).toBe("rules");
       expect(applyProjectConfig(user, { mode: "ask" }).config.mode).toBe("ask");
     });
 
-    it("忽略較寬鬆的 mode", () => {
+    it("ignores a looser mode", () => {
       const strict = resolveConfig({ mode: "rules" });
       const { config, ignored } = applyProjectConfig(strict, { mode: "off" });
       expect(config.mode).toBe("rules");
       expect(ignored).toEqual(["mode"]);
     });
 
-    it("相同 mode 不算被忽略", () => {
+    it("does not report the same mode as ignored", () => {
       expect(applyProjectConfig(user, { mode: "auto" }).ignored).toEqual([]);
     });
 
-    it("使用者是 off 時，接受專案的 auto", () => {
+    it("accepts auto from the project when the user mode is off", () => {
       const off = resolveConfig({ mode: "off" });
       expect(applyProjectConfig(off, { mode: "auto" }).config.mode).toBe("auto");
     });
 
-    it("使用者是 ask 時，忽略專案的 rules", () => {
+    it("ignores rules from the project when the user mode is ask", () => {
       const ask = resolveConfig({ mode: "ask" });
       const { config, ignored } = applyProjectConfig(ask, { mode: "rules" });
       expect(config.mode).toBe("ask");
@@ -69,12 +69,12 @@ describe("applyProjectConfig", () => {
   });
 
   describe("allowInsideWorkingDirectory", () => {
-    it("專案層可以關閉", () => {
+    it("lets the project turn it off", () => {
       const { config } = applyProjectConfig(user, { allowInsideWorkingDirectory: false });
       expect(config.allowInsideWorkingDirectory).toBe(false);
     });
 
-    it("專案層不能開啟", () => {
+    it("does not let the project turn it on", () => {
       const { config, ignored } = applyProjectConfig(DEFAULT_CONFIG, {
         allowInsideWorkingDirectory: true,
       });
@@ -84,19 +84,19 @@ describe("applyProjectConfig", () => {
   });
 
   describe("classifier", () => {
-    it("專案層可以停用分類器", () => {
+    it("lets the project disable the classifier", () => {
       const { config } = applyProjectConfig(user, { classifier: { enabled: false } });
       expect(config.classifier.enabled).toBe(false);
     });
 
-    it("專案層不能重新啟用分類器", () => {
+    it("does not let the project re-enable the classifier", () => {
       const disabled = resolveConfig({ classifier: { enabled: false } });
       const { config, ignored } = applyProjectConfig(disabled, { classifier: { enabled: true } });
       expect(config.classifier.enabled).toBe(false);
       expect(ignored).toEqual(["classifier.enabled"]);
     });
 
-    it("softDeny 與 hardDeny 取聯集", () => {
+    it("unions softDeny and hardDeny", () => {
       const { config } = applyProjectConfig(user, {
         classifier: { softDeny: ["Force pushing"], hardDeny: ["Deleting the repo"] },
       });
@@ -104,7 +104,7 @@ describe("applyProjectConfig", () => {
       expect(config.classifier.hardDeny).toEqual(["$defaults", "Deleting the repo"]);
     });
 
-    it("忽略會改變資料去向、成本或判斷依據的欄位", () => {
+    it("ignores fields that change where data goes, the cost, or the judging basis", () => {
       const { config, ignored } = applyProjectConfig(user, {
         classifier: {
           model: "evil/model",
@@ -127,7 +127,7 @@ describe("applyProjectConfig", () => {
     });
   });
 
-  it("專案層收緊的設定不會被列為忽略", () => {
+  it("does not report tightening settings as ignored", () => {
     const { ignored } = applyProjectConfig(user, {
       allowInsideWorkingDirectory: false,
       classifier: { enabled: false },
@@ -135,7 +135,7 @@ describe("applyProjectConfig", () => {
     expect(ignored).toEqual([]);
   });
 
-  it("忽略專案層的 log", () => {
+  it("ignores log from the project layer", () => {
     const { config, ignored } = applyProjectConfig(user, { log: { classifierIo: true } });
     expect(config.log).toEqual(user.log);
     expect(ignored).toEqual(["log"]);

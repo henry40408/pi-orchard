@@ -22,27 +22,27 @@ function writeJson(name: string, content: unknown): string {
 }
 
 describe("resolveConfig", () => {
-  it("空設定等於預設值", () => {
+  it("returns the defaults for an empty config", () => {
     expect(resolveConfig({})).toEqual(DEFAULT_CONFIG);
   });
 
-  it("巢狀欄位只覆蓋有給的 key", () => {
+  it("overrides only the nested keys that are given", () => {
     const config = resolveConfig({ classifier: { context: { userTokens: 100 } } });
     expect(config.classifier.context).toEqual({ userTokens: 100, toolTokens: 4000 });
   });
 
-  it("不會改到共用的預設值", () => {
+  it("does not mutate the shared defaults", () => {
     resolveConfig({}).permissions.deny.push("x");
     expect(DEFAULT_CONFIG.permissions.deny).toEqual([]);
   });
 });
 
 describe("readConfigFile", () => {
-  it("檔案不存在時回傳 missing", () => {
+  it("returns missing when the file does not exist", () => {
     expect(readConfigFile(join(dir, "nope.json"))).toEqual({ status: "missing" });
   });
 
-  it("接受有效的設定", () => {
+  it("accepts a valid config", () => {
     const path = writeJson("ok.json", { mode: "rules", permissions: { deny: ["bash(sudo:*)"] } });
     expect(readConfigFile(path)).toEqual({
       status: "ok",
@@ -51,40 +51,38 @@ describe("readConfigFile", () => {
   });
 
   it.each([
-    ["不是 JSON", "{ nope"],
-    ["未知的 key（拼錯）", { permissions: { dney: [] } }],
-    ["未知的頂層 key", { modee: "auto" }],
-    ["mode 不在列舉內", { mode: "yolo" }],
-    ["規則不是字串", { permissions: { deny: [1] } }],
-    ["規則是空字串", { permissions: { deny: [""] } }],
-    ["model 沒有 provider", { classifier: { model: "claude-haiku-5-5" } }],
-    ["timeoutMs 小於 1000", { classifier: { timeoutMs: 999 } }],
-    ["reasoningLevel 不在列舉內", { classifier: { reasoningLevel: "ultra" } }],
-  ])("拒絕無效的設定：%s", (_name, content) => {
-    const result = readConfigFile(writeJson("bad.json", content));
-    expect(result.status).toBe("invalid");
+    ["not JSON", "{ nope"],
+    ["unknown nested key (typo)", { permissions: { dney: [] } }],
+    ["unknown top-level key", { modee: "auto" }],
+    ["mode outside the enum", { mode: "yolo" }],
+    ["rule that is not a string", { permissions: { deny: [1] } }],
+    ["empty rule string", { permissions: { deny: [""] } }],
+    ["model without a provider", { classifier: { model: "claude-haiku-5-5" } }],
+    ["timeoutMs below 1000", { classifier: { timeoutMs: 999 } }],
+    ["reasoningLevel outside the enum", { classifier: { reasoningLevel: "ultra" } }],
+  ])("rejects an invalid config: %s", (_name, content) => {
+    expect(readConfigFile(writeJson("bad.json", content)).status).toBe("invalid");
   });
 
   it.each([
     ["null", "null"],
-    ["陣列", "[]"],
-    ["__proto__ key", '{"__proto__": {"mode": "off"}}'],
-    ["空檔案", ""],
-  ])("拒絕頂層異常的內容：%s", (_name, text) => {
+    ["an array", "[]"],
+    ["a __proto__ key", '{"__proto__": {"mode": "off"}}'],
+    ["an empty file", ""],
+  ])("rejects an unusual top-level value: %s", (_name, text) => {
     expect(readConfigFile(writeJson("bad.json", text)).status).toBe("invalid");
   });
 
-  it("路徑是目錄時視為無效", () => {
+  it("treats a directory as invalid", () => {
     expect(readConfigFile(dir).status).toBe("invalid");
   });
 
-  it("檔案超過大小上限時視為無效，且不讀取內容", () => {
+  it("treats a file over the size limit as invalid", () => {
     const path = writeJson("big.json", `{"mode": "auto"}${" ".repeat(1024 * 1024)}`);
-    const result = readConfigFile(path);
-    expect(result.status).toBe("invalid");
+    expect(readConfigFile(path).status).toBe("invalid");
   });
 
-  it("錯誤訊息包含檔案路徑與欄位位置", () => {
+  it("includes the file path and field location in the error message", () => {
     const path = writeJson("bad.json", { classifier: { timeoutMs: 1 } });
     const result = readConfigFile(path);
     if (result.status !== "invalid") throw new Error("expected invalid");
@@ -97,12 +95,12 @@ describe("readConfigFile", () => {
 describe("loadConfig", () => {
   const missing = () => join(dir, "missing.json");
 
-  it("兩個檔案都不存在時使用預設值", () => {
+  it("uses the defaults when neither file exists", () => {
     const result = loadConfig({ user: missing(), project: missing() });
     expect(result).toEqual({ config: DEFAULT_CONFIG, errors: [], ignored: [] });
   });
 
-  it("套用使用者層，再套用專案層的收緊", () => {
+  it("applies the user layer, then the project layer's tightening", () => {
     const user = writeJson("user.json", { permissions: { deny: ["bash(sudo:*)"] } });
     const project = writeJson("project.json", {
       mode: "ask",
@@ -114,28 +112,27 @@ describe("loadConfig", () => {
     expect(config.permissions.deny).toEqual(["bash(sudo:*)", "read(./.env*)"]);
   });
 
-  it("回報專案層被忽略的項目", () => {
+  it("reports the project-layer fields that were ignored", () => {
     const project = writeJson("project.json", { permissions: { allow: ["bash(rm:*)"] } });
     const { ignored } = loadConfig({ user: missing(), project });
     expect(ignored).toEqual(["permissions.allow"]);
   });
 
-  it("使用者設定無效時回報錯誤，改用預設值並強制 ask", () => {
+  it("reports errors, falls back to the defaults and forces ask when the user config is invalid", () => {
     const user = writeJson("user.json", { mode: "off", permissions: { dney: [] } });
     const { config, errors } = loadConfig({ user, project: missing() });
     expect(errors.length).toBeGreaterThan(0);
     expect(config).toEqual({ ...DEFAULT_CONFIG, mode: "ask" });
   });
 
-  it("提醒使用者無效檔案裡的 deny 規則未生效", () => {
+  it("tells the user that deny rules in an invalid file are not in effect", () => {
     const user = writeJson("user.json", { permissions: { deny: ["bash(sudo:*)"] }, nope: 1 });
     const { errors } = loadConfig({ user, project: missing() });
-    expect(errors.some((e) => e.includes(user) && e.includes("deny") && e.includes("未生效"))).toBe(
-      true,
-    );
+    const notice = errors.find((e) => e.includes("none of its rules (including deny)"));
+    expect(notice).toContain(user);
   });
 
-  it("兩個檔案都無效時，兩邊的錯誤都會回報", () => {
+  it("reports the errors of both files when both are invalid", () => {
     const user = writeJson("user.json", "{ nope");
     const project = writeJson("project.json", "[]");
     const { errors } = loadConfig({ user, project });
@@ -143,7 +140,7 @@ describe("loadConfig", () => {
     expect(errors.some((e) => e.includes(project))).toBe(true);
   });
 
-  it("專案設定無效時保留使用者層，但強制 ask", () => {
+  it("keeps the user layer but forces ask when the project config is invalid", () => {
     const user = writeJson("user.json", {
       mode: "off",
       permissions: { deny: ["bash(sudo:*)"] },

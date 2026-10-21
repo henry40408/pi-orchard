@@ -11,26 +11,27 @@ type ReadResult =
 
 export interface LoadedConfig {
   config: Config;
-  /** 設定檔無效時不為空；此時 mode 會被強制為 "ask"。 */
+  /** Non-empty when a config file is invalid; mode is then forced to "ask". */
   errors: string[];
-  /** 專案層被忽略的項目，需要告知使用者。 */
+  /** Project-layer fields that were ignored; the user should be told. */
   ignored: string[];
 }
 
-// 專案層來自不受信任的 repo：FIFO 或 /dev/zero 的 symlink 會讓 readFileSync 卡死。
+// The project file comes from an untrusted repo: a FIFO, or a symlink to
+// /dev/zero, would make readFileSync hang.
 const MAX_CONFIG_BYTES = 1024 * 1024;
 
-// 無效檔案裡的 deny 規則也不會生效，必須讓使用者知道。
+// Deny rules in an invalid file do not apply either; the user must know.
 const UNUSED_RULES_NOTICE = (path: string) =>
-  `${path}: 檔案無效，其中所有規則（含 deny）都未生效，mode 已強制為 ask`;
+  `${path}: file is invalid, so none of its rules (including deny) are in effect; mode is forced to ask`;
 
 export function readConfigFile(path: string): ReadResult {
   let text: string;
   try {
     const stats = statSync(path);
-    if (!stats.isFile()) return { status: "invalid", errors: [`${path}: 不是一般檔案`] };
+    if (!stats.isFile()) return { status: "invalid", errors: [`${path}: not a regular file`] };
     if (stats.size > MAX_CONFIG_BYTES) {
-      return { status: "invalid", errors: [`${path}: 檔案超過 ${MAX_CONFIG_BYTES} bytes`] };
+      return { status: "invalid", errors: [`${path}: file is larger than ${MAX_CONFIG_BYTES} bytes`] };
     }
     text = readFileSync(path, "utf8");
   } catch (error) {
@@ -65,7 +66,7 @@ export function loadConfig(paths: { user: string; project: string }): LoadedConf
   let ignored: string[] = [];
   if (project.status === "ok") ({ config, ignored } = applyProjectConfig(config, project.file));
 
-  // 無法確認使用者的意圖時，寧可全部詢問。
+  // When the user's intent is unclear, ask about everything.
   if (errors.length > 0) config.mode = "ask";
   return { config, errors, ignored };
 }

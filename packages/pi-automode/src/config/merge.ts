@@ -1,11 +1,11 @@
 import type { Config, ConfigFile, Mode } from "./schema.ts";
 
-// 越大越嚴格。rules 不會呼叫分類器，所以比 auto 嚴格。
+// Higher is stricter. rules never calls the classifier, so it is stricter than auto.
 const MODE_STRICTNESS: Record<Mode, number> = { off: 0, auto: 1, rules: 2, ask: 3 };
 
 export interface MergeResult {
   config: Config;
-  /** 專案層試圖放寬或不允許設定的項目。 */
+  /** Project-layer fields that tried to loosen the user layer or are not allowed there. */
   ignored: string[];
 }
 
@@ -14,8 +14,9 @@ function union(base: string[], extra: string[] = []): string[] {
 }
 
 /**
- * 把專案層疊在使用者層上，只允許收緊。
- * 原因：專案設定檔來自可能不受信任的 repo，不能讓它放行使用者沒放行的動作。
+ * Layers the project config over the user config, tightening only.
+ * Why: the project file comes from a possibly untrusted repo, so it must not
+ * allow anything the user did not allow.
  */
 export function applyProjectConfig(user: Config, project: ConfigFile): MergeResult {
   const ignored: string[] = [];
@@ -47,7 +48,8 @@ export function applyProjectConfig(user: Config, project: ConfigFile): MergeResu
   config.classifier.softDeny = union(user.classifier.softDeny, projectClassifier?.softDeny);
   config.classifier.hardDeny = union(user.classifier.hardDeny, projectClassifier?.hardDeny);
 
-  // 其餘欄位會改變資料送往何處、成本或分類器的判斷依據，只接受使用者層。
+  // The remaining fields change where data is sent, the cost, or what the
+  // classifier judges by, so only the user layer may set them.
   const userOnlyFields = [
     "model",
     "reasoningLevel",
