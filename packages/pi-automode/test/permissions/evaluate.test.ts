@@ -189,10 +189,71 @@ describe("path tools", () => {
     }
   });
 
-  it("denies a symlink that points at a denied file", () => {
+  it("reports the real path of a symlink instead of judging the link", () => {
     writeFileSync(join(pathContext.cwd, ".env"), "secret");
     symlinkSync(join(pathContext.cwd, ".env"), join(pathContext.cwd, "innocent"));
-    assert.equal(evaluate(deny, "read", { path: "innocent" }).decision, "deny");
+    assert.deepEqual(evaluate(deny, "read", { path: "innocent" }), {
+      decision: "symlink",
+      realPath: join(pathContext.cwd, ".env"),
+    });
+  });
+
+  it("judges the real path when the model asks again with it", () => {
+    writeFileSync(join(pathContext.cwd, ".env"), "secret");
+    symlinkSync(join(pathContext.cwd, ".env"), join(pathContext.cwd, "innocent"));
+    assert.equal(evaluate(deny, "read", { path: join(pathContext.cwd, ".env") }).decision, "deny");
+  });
+
+  it("applies a rule written with a symlinked path to the real path", () => {
+    mkdirSync(join(pathContext.home, "vault"));
+    writeFileSync(join(pathContext.home, "vault", "creds"), "secret");
+    symlinkSync(join(pathContext.home, "vault"), join(pathContext.home, ".aws"));
+    const real = join(pathContext.home, "vault", "creds");
+    for (const rule of [
+      `read(${pathContext.home}/.aws/**)`,
+      "read(~/.aws/**)",
+      `read(${pathContext.home}/.aws/creds)`,
+      "read(~/.aws/creds)",
+    ]) {
+      const rules = { allow: ["read"], deny: [rule] };
+      assert.equal(evaluate(rules, "read", { path: "~/.aws/creds" }).decision, "symlink", rule);
+      assert.equal(evaluate(rules, "read", { path: real }).decision, "deny", rule);
+    }
+  });
+
+  it("reports the real directory for a relative dangling link inside a symlinked directory", () => {
+    mkdirSync(join(pathContext.home, "sub"));
+    symlinkSync(join(pathContext.home, "sub"), join(pathContext.cwd, "d"));
+    symlinkSync("../missing", join(pathContext.home, "sub", "link"));
+    assert.deepEqual(evaluate({}, "write", { path: "d/link" }), {
+      decision: "symlink",
+      realPath: join(pathContext.home, "missing"),
+    });
+  });
+
+  it("does not report a fallback spelling when the file exists as written", () => {
+    mkdirSync(join(pathContext.cwd, "it's"));
+    writeFileSync(join(pathContext.cwd, "it's", "f"), "x");
+    symlinkSync(pathContext.home, join(pathContext.cwd, "it’s"));
+    assert.equal(evaluate({ allow: ["read"] }, "read", { path: "it's/f" }).decision, "allow");
+  });
+
+  it("reports a symlink even when the whole tool is allowed", () => {
+    writeFileSync(join(pathContext.home, "x"), "x");
+    symlinkSync(join(pathContext.home, "x"), join(pathContext.cwd, "link"));
+    assert.equal(evaluate({ allow: ["write"] }, "write", { path: "link" }).decision, "symlink");
+  });
+
+  it("reports a symlink for write, edit, ls, find and grep as well", () => {
+    symlinkSync(pathContext.home, join(pathContext.cwd, "dir"));
+    for (const tool of ["write", "edit", "ls", "find", "grep"]) {
+      assert.equal(evaluate({}, tool, { path: "dir" }).decision, "symlink", tool);
+    }
+  });
+
+  it("does not report symlinks for a bash command", () => {
+    symlinkSync(pathContext.home, join(pathContext.cwd, "dir"));
+    assert.equal(evaluate({ allow: ["bash(ls:*)"] }, "bash", { command: "ls dir" }).decision, "allow");
   });
 
   it("does not apply a rule for one tool to another", () => {
@@ -214,7 +275,9 @@ describe("path tools", () => {
     mkdirSync(join(pathContext.cwd, "src"));
     writeFileSync(join(pathContext.home, "secret"), "x");
     symlinkSync(join(pathContext.home, "secret"), join(pathContext.cwd, "src", "link"));
-    assert.equal(evaluate({ allow: ["read(./src/**)"] }, "read", { path: "src/link" }).decision, "none");
+    const allow = { allow: ["read(./src/**)"] };
+    assert.equal(evaluate(allow, "read", { path: "src/link" }).decision, "symlink");
+    assert.equal(evaluate(allow, "read", { path: join(pathContext.home, "secret") }).decision, "none");
   });
 
   it("uses the working directory when ls, find or grep get no path", () => {

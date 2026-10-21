@@ -1,4 +1,4 @@
-import { realpathSync } from "node:fs";
+import { readlinkSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,20 +36,57 @@ function resolveToolPath(raw: string, context: PathContext): string {
   return resolve(context.cwd, path);
 }
 
+const MAX_DANGLING_SYMLINK_HOPS = 40;
+
 // realpath of the nearest existing ancestor, plus the part that does not exist yet.
-function canonicalize(path: string): string {
+// A symlink whose target is missing is followed too: writing through it creates the target.
+function canonicalize(path: string, hops = 0): string {
   const missing: string[] = [];
   let current = path;
   for (;;) {
     try {
       return join(realpathSync(current), ...missing);
     } catch {
+      const target = danglingSymlinkTarget(current);
+      if (target !== undefined && hops < MAX_DANGLING_SYMLINK_HOPS) {
+        return join(canonicalize(target, hops + 1), ...missing);
+      }
       const parent = dirname(current);
       if (parent === current) return path;
       missing.unshift(basename(current));
       current = parent;
     }
   }
+}
+
+function danglingSymlinkTarget(path: string): string | undefined {
+  try {
+    // A relative link is resolved against the real directory that holds it, as the OS does.
+    return resolve(canonicalize(dirname(path)), readlinkSync(path));
+  } catch {
+    return undefined;
+  }
+}
+
+// The working directory and home may be symlinks themselves (/tmp on macOS).
+// That is the user's setup, not a link the model followed, so it is not reported.
+function withRealBase(path: string, context: PathContext): string {
+  for (const base of [context.cwd, context.home]) {
+    if (path !== base && !path.startsWith(`${base}/`)) continue;
+    return canonicalize(base) + path.slice(base.length);
+  }
+  return path;
+}
+
+/**
+ * The real path of `path` when it goes through a symlink, otherwise undefined.
+ * The caller tells the model this path instead of following the link, so the
+ * model asks again with the real path and the rules judge that path.
+ */
+export function symlinkTarget(path: string, context: PathContext): string | undefined {
+  const normalized = withRealBase(path, context);
+  const real = canonicalize(normalized);
+  return real === normalized ? undefined : real;
 }
 
 export interface PathFormsOptions {
@@ -67,8 +104,8 @@ function readFallbackSpellings(resolved: string): string[] {
 
 /**
  * The absolute paths a tool call may touch: the path as written and, when it
- * differs, the path after following symlinks. Why: a symlink inside the
- * project must not bypass a rule on the file it points to.
+ * differs, the same path with a symlinked working directory or home replaced
+ * by its real path. Symlinks inside the path are not followed here; see `symlinkTarget`.
  */
 export function pathForms(raw: string, context: PathContext, options: PathFormsOptions = {}): string[] {
   const written = resolveToolPath(raw, context);
@@ -76,7 +113,7 @@ export function pathForms(raw: string, context: PathContext, options: PathFormsO
   const forms = new Set<string>();
   for (const spelling of spellings) {
     forms.add(spelling);
-    forms.add(canonicalize(spelling));
+    forms.add(withRealBase(spelling, context));
   }
   return [...forms];
 }
@@ -127,15 +164,36 @@ function tokensUnder(base: string, rest: string, context: PathContext): Token[] 
   return [...literalTokens(base, context), ...globTokens(resolved.slice(base.length), context)];
 }
 
-// A relative specifier is also tried against the real path of its base, so a
-// symlinked working directory (such as /tmp on macOS) cannot dodge a rule.
+// The part of a specifier before its first glob character, cut at a directory
+// boundary, with symlinks followed. `from` skips a base that is always literal.
+function withRealLiteralPrefix(specifier: string, from = 0): string {
+  const glob = specifier.slice(from).search(/[*?[]/);
+  const literalEnd = glob === -1 ? specifier.length : specifier.lastIndexOf("/", from + glob);
+  if (literalEnd <= 0) return specifier;
+  const prefix = specifier.slice(0, literalEnd);
+  return canonicalize(prefix) + specifier.slice(prefix.length);
+}
+
+// The model is told the real path of a symlink and asks again with it, so a
+// rule written with a symlinked path must match the real path too. A
+// symlinked working directory (such as /tmp on macOS) is covered the same way.
 function specifierTokenSets(specifier: string, context: PathContext): Token[][] {
-  if (isAbsolute(specifier)) return [globTokens(resolve(specifier), context)];
+  if (isAbsolute(specifier)) {
+    const resolved = resolve(specifier);
+    return [...new Set([resolved, withRealLiteralPrefix(resolved)])].map((path) => globTokens(path, context));
+  }
   const underHome = specifier === "~" || specifier.startsWith("~/");
   const base = underHome ? context.home : context.cwd;
   const rest = underHome ? specifier.slice(2) : specifier;
-  const bases = new Set([base, canonicalize(base)]);
-  return [...bases].map((candidate) => tokensUnder(candidate, rest, context));
+  const realBase = canonicalize(base);
+  const sets = [...new Set([base, realBase])].map((candidate) => tokensUnder(candidate, rest, context));
+
+  const resolved = resolve(base, rest);
+  if (resolved !== base && !resolved.startsWith(`${base}/`)) return sets;
+  const realized = withRealLiteralPrefix(resolved, base.length);
+  if (realized === resolved) return sets;
+  if (realized !== realBase && !realized.startsWith(`${realBase}/`)) return [...sets, globTokens(realized, context)];
+  return [...sets, tokensUnder(realBase, realized.slice(realBase.length + 1), context)];
 }
 
 /**

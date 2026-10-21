@@ -1,5 +1,6 @@
+import { existsSync } from "node:fs";
 import { analyzeBash, type BashUnit, matchesBashSpecifier } from "./bash.ts";
-import { matchesPathSpecifier, mayMatchInside, type PathContext, pathForms } from "./paths.ts";
+import { matchesPathSpecifier, mayMatchInside, type PathContext, pathForms, symlinkTarget } from "./paths.ts";
 import { parseRule, type Rule } from "./rule.ts";
 
 export interface Permissions {
@@ -8,13 +9,19 @@ export interface Permissions {
   deny: string[];
 }
 
-/** `none` means no rule decided; the caller treats it like `ask`. */
-export type Decision = "allow" | "ask" | "deny" | "none";
+/**
+ * `none` means no rule decided; the caller treats it like `ask`.
+ * `symlink` means the path goes through a symlink: the caller blocks the call
+ * and tells the model `realPath`, so the model asks again with that path.
+ */
+export type Decision = "allow" | "ask" | "deny" | "none" | "symlink";
 
 export interface Evaluation {
   decision: Decision;
   /** The rule that decided, as written in the config. */
   rule?: string;
+  /** Set when `decision` is `symlink`. */
+  realPath?: string;
 }
 
 export interface EvaluateInput {
@@ -65,6 +72,20 @@ function describeTarget(toolName: string, input: unknown, context: PathContext):
   return { units: [], complete: false };
 }
 
+function findSymlinkTarget(toolName: string, target: Target, context: PathContext): string | undefined {
+  if (!PATH_TOOLS.has(toolName)) return undefined;
+  for (const unit of target.units) {
+    // pi tries its fallback spellings only when the path as written does not exist.
+    const [written] = unit.allowForms;
+    const candidates = written !== undefined && existsSync(written) ? [written] : unit.allowForms;
+    for (const form of candidates) {
+      const realPath = symlinkTarget(form, context);
+      if (realPath !== undefined) return realPath;
+    }
+  }
+  return undefined;
+}
+
 function matcherFor(toolName: string, context: PathContext): SpecifierMatcher {
   if (toolName === "bash") return { blocks: matchesBashSpecifier, covers: matchesBashSpecifier };
   if (PATH_TOOLS.has(toolName)) {
@@ -101,6 +122,10 @@ function evaluateRules(request: EvaluateInput): Evaluation {
 
   const target = describeTarget(toolName, input, pathContext);
   const matcher = matcherFor(toolName, pathContext);
+
+  // Before any rule: the rules must judge the real path, not the link.
+  const realPath = findSymlinkTarget(toolName, target, pathContext);
+  if (realPath !== undefined) return { decision: "symlink", realPath };
 
   const blocks = (rule: Rule): boolean =>
     rule.specifier === undefined ||

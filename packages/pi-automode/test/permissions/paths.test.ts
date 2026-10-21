@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { matchesPathSpecifier, mayMatchInside, type PathContext, pathForms } from "../../src/permissions/paths.ts";
+import { matchesPathSpecifier, mayMatchInside, type PathContext, pathForms, symlinkTarget } from "../../src/permissions/paths.ts";
 
 let root: string;
 let context: PathContext;
@@ -49,21 +49,55 @@ describe("pathForms", () => {
     ]);
   });
 
-  it("also returns the path after following a symlink", () => {
+  it("does not follow a symlink inside the path", () => {
     writeFileSync(join(context.home, ".env"), "secret");
     symlinkSync(join(context.home, ".env"), join(context.cwd, "link"));
-    assert.deepEqual(pathForms("link", context), [
-      join(context.cwd, "link"),
-      join(context.home, ".env"),
-    ]);
+    assert.deepEqual(pathForms("link", context), [join(context.cwd, "link")]);
+  });
+});
+
+describe("symlinkTarget", () => {
+  it("returns undefined for a path without symlinks", () => {
+    writeFileSync(join(context.cwd, "a.txt"), "x");
+    assert.equal(symlinkTarget(join(context.cwd, "a.txt"), context), undefined);
+    assert.equal(symlinkTarget(join(context.cwd, "missing/new.txt"), context), undefined);
   });
 
-  it("follows a symlinked directory for a file that does not exist yet", () => {
+  it("returns the real path of a symlinked file", () => {
+    writeFileSync(join(context.home, ".env"), "secret");
+    symlinkSync(join(context.home, ".env"), join(context.cwd, "link"));
+    assert.equal(symlinkTarget(join(context.cwd, "link"), context), join(context.home, ".env"));
+  });
+
+  it("returns the real path for a file that does not exist yet in a symlinked directory", () => {
     symlinkSync(context.home, join(context.cwd, "dir"));
-    assert.deepEqual(pathForms("dir/new.txt", context), [
-      join(context.cwd, "dir/new.txt"),
-      join(context.home, "new.txt"),
-    ]);
+    assert.equal(symlinkTarget(join(context.cwd, "dir/new.txt"), context), join(context.home, "new.txt"));
+  });
+
+  it("follows a symlink whose target does not exist", () => {
+    symlinkSync(join(context.home, "created-later"), join(context.cwd, "dangling"));
+    assert.equal(symlinkTarget(join(context.cwd, "dangling"), context), join(context.home, "created-later"));
+  });
+
+  it("follows a chain of symlinks to the final path", () => {
+    writeFileSync(join(context.home, "target"), "x");
+    symlinkSync(join(context.home, "target"), join(context.cwd, "second"));
+    symlinkSync(join(context.cwd, "second"), join(context.cwd, "first"));
+    assert.equal(symlinkTarget(join(context.cwd, "first"), context), join(context.home, "target"));
+  });
+
+  it("does not throw on a symlink loop", () => {
+    symlinkSync(join(context.cwd, "b"), join(context.cwd, "a"));
+    symlinkSync(join(context.cwd, "a"), join(context.cwd, "b"));
+    assert.doesNotThrow(() => symlinkTarget(join(context.cwd, "a"), context));
+  });
+
+  it("does not report a symlinked working directory", () => {
+    const link = join(root, "link");
+    symlinkSync(context.cwd, link);
+    const linked = { ...context, cwd: link };
+    writeFileSync(join(context.cwd, "a.txt"), "x");
+    assert.equal(symlinkTarget(join(link, "a.txt"), linked), undefined);
   });
 });
 
