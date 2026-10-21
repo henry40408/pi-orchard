@@ -1,9 +1,12 @@
 import Type from "typebox";
+import { RULE_PATTERN } from "../permissions/rule.ts";
 
 export const MODES = ["auto", "rules", "ask", "off"] as const;
 export const REASONING_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
 
 const RuleList = Type.Array(Type.String({ minLength: 1 }));
+// A malformed permission rule must be an error, not a rule that silently never matches.
+const PermissionRuleList = Type.Array(Type.String({ pattern: RULE_PATTERN }));
 
 // A Union built directly from a .map result loses the literal types in TypeBox.
 function oneOf<T extends string>(values: readonly T[]) {
@@ -18,9 +21,9 @@ export const ConfigFileSchema = Type.Object(
     permissions: Type.Optional(
       Type.Object(
         {
-          allow: Type.Optional(RuleList),
-          ask: Type.Optional(RuleList),
-          deny: Type.Optional(RuleList),
+          allow: Type.Optional(PermissionRuleList),
+          ask: Type.Optional(PermissionRuleList),
+          deny: Type.Optional(PermissionRuleList),
         },
         { additionalProperties: false },
       ),
