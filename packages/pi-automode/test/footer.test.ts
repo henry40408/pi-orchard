@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { footerText } from "../src/footer.ts";
+import { FOOTER_KEY, footerText } from "../src/footer.ts";
 import { AutomodeState } from "../src/state.ts";
 
 function setup(userConfig?: string) {
@@ -14,21 +14,33 @@ function setup(userConfig?: string) {
 }
 
 describe("footerText", () => {
-  it("names the mode, with a prefix because the footer hides the key", () => {
+  it("names the mode", () => {
     const { state, cwd } = setup();
-    assert.equal(footerText(state, cwd), "automode: auto");
+    assert.equal(footerText(state, cwd), "🛡️ automode: auto");
     state.setMode(cwd, "rules");
-    assert.equal(footerText(state, cwd), "automode: rules");
+    assert.equal(footerText(state, cwd), "🛡️ automode: rules");
   });
 
-  it("shouts when automode is off", () => {
+  it("warns when automode is off", () => {
     const { state, cwd } = setup();
     state.setMode(cwd, "off");
-    assert.equal(footerText(state, cwd), "automode: OFF");
+    assert.equal(footerText(state, cwd), "⚠️ automode: OFF");
   });
 
   it("flags a config error", () => {
     const { state, cwd } = setup("{ nope");
-    assert.equal(footerText(state, cwd), "automode: ask (config error)");
+    assert.equal(footerText(state, cwd), "⚠️ automode: ask · config error");
+  });
+
+  it("survives what statusline extensions do to the text", () => {
+    const states = [setup(), setup("{ nope")];
+    states[0]?.state.setMode(states[0].cwd, "off");
+    for (const entry of [setup(), ...states]) {
+      const text = footerText(entry.state, entry.cwd);
+      assert.ok(!text.startsWith(`${FOOTER_KEY}:`), "a leading key prefix is cut");
+      assert.ok(/^\p{Extended_Pictographic}/u.test(text), "a leading emoji becomes the icon");
+      assert.ok(!text.trimEnd().endsWith(")"), "a trailing parenthesis is dropped");
+      assert.ok(text.includes("automode:"), "the name stays after the icon");
+    }
   });
 });
