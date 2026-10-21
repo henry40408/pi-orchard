@@ -34,7 +34,7 @@ export const ConfigFileSchema = Type.Object(
           enabled: Type.Optional(Type.Boolean()),
           model: Type.Optional(Type.String({ pattern: "^[^/\\s]+/\\S+$" })),
           reasoningLevel: Type.Optional(oneOf(REASONING_LEVELS)),
-          timeoutMs: Type.Optional(Type.Integer({ minimum: 1000 })),
+          timeoutMs: Type.Optional(Type.Integer({ minimum: 1000, maximum: 600000 })),
           context: Type.Optional(
             Type.Object(
               {
