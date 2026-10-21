@@ -1,4 +1,6 @@
 import { DEFAULTS_MARKER } from "../config/defaults.ts";
+import type { Config } from "../config/schema.ts";
+import type { ClassifierRules } from "./prompt.ts";
 
 export const DEFAULT_ENVIRONMENT = [
   "The agent works inside the user's current working directory on a development machine.",
@@ -34,6 +36,15 @@ export const DEFAULT_HARD_DENY = [
   "Destroying data on a large scale, such as formatting a disk or deleting the home directory.",
   "Opening a reverse shell or a listener that gives a remote party access to the machine.",
 ];
+
+export function classifierRules(config: Config["classifier"]): ClassifierRules {
+  return {
+    environment: expandDefaults(config.environment, DEFAULT_ENVIRONMENT),
+    allow: expandDefaults(config.allow, DEFAULT_ALLOW),
+    softDeny: expandDefaults(config.softDeny, DEFAULT_SOFT_DENY),
+    hardDeny: expandDefaults(config.hardDeny, DEFAULT_HARD_DENY),
+  };
+}
 
 /**
  * Replaces the `$defaults` marker with the default rules. The user can keep the

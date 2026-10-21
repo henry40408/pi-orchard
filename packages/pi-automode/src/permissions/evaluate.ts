@@ -100,6 +100,27 @@ function matcherFor(toolName: string, context: PathContext): SpecifierMatcher {
   return { blocks: () => false, covers: () => false };
 }
 
+// Files that later commands run on their own. A write here is code execution, so the classifier must judge it.
+const SELF_RUNNING_PATHS = [".git", "**/.git", ".pi", "**/.pi", ".vscode", "**/.vscode", ".envrc", "**/.envrc"];
+
+/**
+ * True when a file tool only touches paths inside the working directory, and
+ * none of them is a file that runs code by itself. Never true for bash.
+ */
+export function isInsideWorkingDirectory(toolName: string, input: unknown, context: PathContext): boolean {
+  const name = toolName.toLowerCase();
+  if (!PATH_TOOLS.has(name)) return false;
+  const target = describeTarget(name, input, context);
+  if (!target.complete) return false;
+  return target.units.every((unit) =>
+    unit.allowForms.every(
+      (form) =>
+        matchesPathSpecifier(form, ".", context) &&
+        !SELF_RUNNING_PATHS.some((specifier) => matchesPathSpecifier(form, specifier, context)),
+    ),
+  );
+}
+
 /**
  * Decides a tool call from the permission rules.
  * Priority is fixed: deny, then ask, then allow, whatever the order of the
