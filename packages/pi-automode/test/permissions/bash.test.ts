@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import {
-  bashAllowForms,
-  bashBlockForms,
-  matchesBashSpecifier,
-  splitBashCommand,
-} from "../../src/permissions/bash.ts";
+import { analyzeBash, matchesBashSpecifier } from "../../src/permissions/bash.ts";
 
-describe("splitBashCommand", () => {
+// The command each unit runs, as written.
+const written = (command: string) => analyzeBash(command).units.map((unit) => unit.allowForms[0]);
+const blockForms = (command: string) => analyzeBash(command).units.flatMap((unit) => unit.blockForms);
+
+describe("analyzeBash", () => {
   // A command nested in a substitution comes before the command containing it.
   const splits: [string, string, string[]][] = [
     ["a single command", "ls -la", ["ls -la"]],
@@ -23,24 +22,36 @@ describe("splitBashCommand", () => {
     ["process substitution", "diff <(ls a) <(ls b)", ["ls a", "ls b", "diff <(ls a) <(ls b)"]],
     ["a subshell", "(cd x && rm -rf y)", ["cd x", "rm -rf y"]],
     ["a substitution inside double quotes", 'echo "$(rm -rf /)"', ["rm -rf /", 'echo "$(rm -rf /)"']],
+    ["a substitution inside ${...}", "echo ${x:-$(id)}", ["id", "echo ${x:-$(id)}"]],
+    ["a substitution inside arithmetic", "echo $(( $(id) + 1 ))", ["id", "echo $(( $(id) + 1 ))"]],
     ["operators inside single quotes", "echo 'a && rm -rf /'", ["echo 'a && rm -rf /'"]],
     ["operators inside double quotes", 'git commit -m "a && b; c"', ['git commit -m "a && b; c"']],
     ["a substitution inside single quotes", "echo '$(rm)'", ["echo '$(rm)'"]],
     ["an escaped operator", "echo a\\;b", ["echo a\\;b"]],
-    ["an escaped quote", 'echo "a\\" && b"', ['echo "a\\" && b"']],
+    ["an if", "if true; then rm -rf /; fi", ["true", "rm -rf /"]],
+    ["a loop", "for f in $(ls); do rm $f; done", ["ls", "rm $f"]],
+    ["a brace group", "{ rm -rf /; }", ["rm -rf /"]],
+    ["a negation", "! rm -rf /", ["rm -rf /"]],
+    ["a case", "case $x in a) rm -rf /;; esac", ["rm -rf /"]],
+    ["a leading assignment", "FOO=1 ls", ["FOO=1 ls"]],
+    ["an assignment on its own", "FOO=1", ["FOO=1"]],
   ];
-  for (const [name, command, segments] of splits) {
-    it(`splits ${name}`, () => {
-      const result = splitBashCommand(command);
-      assert.deepEqual(result.segments, segments);
+  for (const [name, command, expected] of splits) {
+    it(`finds the commands of ${name}`, () => {
+      const result = analyzeBash(command);
+      assert.deepEqual(written(command), expected);
       assert.equal(result.complete, true);
     });
   }
 
-  const harmlessRedirects = ["ls 2>&1", "ls >&2", "ls > /dev/null", "ls 2>/dev/null", "ls &>/dev/null"];
+  it("keeps a redirect out of the command text", () => {
+    assert.deepEqual(written("ls 2>&1"), ["ls"]);
+  });
+
+  const harmlessRedirects = ["ls 2>&1", "ls >&2", "ls >&-", "ls > /dev/null", "ls 2>/dev/null", "ls &>/dev/null", "ls < in.txt"];
   for (const command of harmlessRedirects) {
     it(`treats "${command}" as fully analysed`, () => {
-      assert.equal(splitBashCommand(command).complete, true);
+      assert.equal(analyzeBash(command).complete, true);
     });
   }
 
@@ -48,129 +59,116 @@ describe("splitBashCommand", () => {
     ["output redirected to a file", "echo hi > ~/.bashrc"],
     ["output appended to a file", "echo hi >> out.txt"],
     ["a quoted redirect target", 'echo hi > "/dev/null"'],
+    ["a file descriptor duplication that names a file", "echo hi >&2pwned"],
     ["an unterminated single quote", "echo 'oops"],
     ["an unterminated double quote", 'echo "oops'],
     ["an unterminated substitution", "echo $(ls"],
     ["an unterminated backtick", "echo `ls"],
     ["a stray closing parenthesis", "ls )"],
+    ["a command named by a variable", "$CMD x"],
+    ["a command named by a substitution", "$(echo rm) x"],
+    ["a command named by a brace expansion", "{rm,ls} x"],
+    ["a command named by a glob", "r? x"],
+    ["a function definition", "ls() { rm -rf x; }"],
+    ["an unterminated here-document", "cat <<EOF\nhi"],
   ];
   for (const [name, command] of incomplete) {
     it(`flags ${name} as not fully analysed`, () => {
-      assert.equal(splitBashCommand(command).complete, false);
+      assert.equal(analyzeBash(command).complete, false);
     });
   }
 
   it("still returns the commands of an incomplete command", () => {
-    assert.deepEqual(splitBashCommand("rm -rf x; echo 'oops").segments, ["rm -rf x", "echo 'oops"]);
+    assert.deepEqual(written("rm -rf x; echo 'oops"), ["rm -rf x", "echo 'oops"]);
   });
 
-  it("does not end $'...' at an escaped quote", () => {
-    const result = splitBashCommand("echo $'a\\'b' ; touch pwned #'");
-    assert.deepEqual(result.segments, ["echo $'a\\'b'", "touch pwned"]);
-    assert.equal(result.complete, true);
-  });
-
-  it("flags a file descriptor duplication followed by a word as a file write", () => {
-    assert.equal(splitBashCommand("echo hi >&2pwned").complete, false);
-    assert.equal(splitBashCommand("echo hi >&2; ls").complete, true);
-  });
-
-  it("ends a comment at the newline", () => {
-    assert.deepEqual(splitBashCommand("ls # it's\nrm -rf x").segments, ["ls", "rm -rf x"]);
-  });
-
-  it("does not treat a # inside a word as a comment", () => {
-    assert.deepEqual(splitBashCommand("echo a#b; rm x").segments, ["echo a#b", "rm x"]);
-  });
-
-  it("does not start a comment after an escaped blank or a line continuation", () => {
-    for (const command of ["echo a\\ #; touch pwned", "echo a\\\t#; touch pwned", "echo a\\\n#; touch pwned"]) {
-      assert.ok(splitBashCommand(command).segments.includes("touch pwned"), command);
-    }
-  });
-
-  it("does not let ${...} hide a # or quote", () => {
-    for (const command of ["echo ${x:- #}; touch pwned", `echo "\${x:-'"'}"; touch pwned #'`]) {
-      const result = splitBashCommand(command);
-      assert.equal(result.complete, false, command);
-      assert.ok(result.segments.includes("touch pwned") || result.segments.some((s) => s.includes("touch pwned")));
-    }
-  });
-
-  it("does not read $$' as ANSI-C quoting", () => {
-    const result = splitBashCommand("echo $$'\\'; touch pwned #'");
-    assert.ok(result.segments.includes("touch pwned"));
-  });
-
-  it("flags backticks nested as \\` as not fully analysed", () => {
-    assert.equal(splitBashCommand("echo `echo \\`touch pwned\\``").complete, false);
-  });
-
-  it("flags here-documents as not fully analysed but allows here-strings", () => {
-    assert.equal(splitBashCommand("cat <<EOF\nhi\nEOF").complete, false);
-    assert.equal(splitBashCommand("cat <<'EOF'\nit's\nEOF").complete, false);
-    assert.equal(splitBashCommand("cat <<< hello").complete, true);
-  });
-
-  it("flags case patterns as not fully analysed", () => {
-    assert.equal(splitBashCommand("echo $(case a in a) touch pwned;; esac)").complete, false);
+  it("returns no units for an empty command", () => {
+    assert.deepEqual(analyzeBash("  "), { units: [], complete: true });
   });
 
   it("refuses to analyse deeply nested commands without throwing", () => {
-    const result = splitBashCommand("$(".repeat(100_000));
-    assert.equal(result.complete, false);
+    assert.equal(analyzeBash("$(".repeat(100_000)).complete, false);
+    assert.equal(analyzeBash(`${"( ".repeat(1000)}ls${" )".repeat(1000)}`).complete, false);
+    assert.equal(analyzeBash(`${"( ".repeat(60)}ls${" )".repeat(60)}`).complete, false);
   });
 
-  it("returns no segments for an empty command", () => {
-    assert.deepEqual(splitBashCommand("  "), { segments: [], complete: true });
+  describe("constructs that used to hide a command", () => {
+    const hidden: [string, string][] = [
+      ["$'...' with an escaped quote", "echo $'a\\'b' ; touch pwned #'"],
+      ["a comment that contains a quote", "ls # it's\ntouch pwned"],
+      ["an escaped blank before #", "echo a\\ #; touch pwned"],
+      ["a line continuation before #", "echo a\\\n#; touch pwned"],
+      ["$$ before a quote", "echo $$'\\'; touch pwned #'"],
+      ["# inside ${...}", "echo ${x:- #}; touch pwned"],
+      ["a quote inside \"${...}\"", `echo "\${x:-'"'}"; touch pwned #'`],
+      ["a here-document with a quote", "cat <<EOF\nit's\nEOF\ntouch pwned # '"],
+      ["a here-document in a substitution", "echo \"$(cat <<'EOF'\nit's\nEOF\n)\"; touch pwned #'"],
+      ["a case pattern in a substitution", "echo $(case a in a) touch pwned;; esac)"],
+      ["nested escaped backticks", "echo `echo \\`touch pwned\\``"],
+    ];
+    for (const [name, command] of hidden) {
+      it(`finds the command behind ${name}`, () => {
+        assert.ok(written(command).includes("touch pwned"), command);
+      });
+    }
   });
 });
 
-describe("bash forms", () => {
-  it("collapses whitespace", () => {
-    assert.deepEqual(bashAllowForms("  rm   -rf \t x "), ["rm -rf x"]);
+describe("block forms", () => {
+  it("keeps the command as written", () => {
+    assert.ok(blockForms("rm   -rf \t x").includes("rm -rf x"));
   });
 
-  it("adds a form without leading assignments for deny and ask", () => {
-    const forms = bashBlockForms("FOO=1 BAR='a b' rm -rf x");
-    assert.deepEqual(forms.slice(0, 2), ["FOO=1 BAR='a b' rm -rf x", "rm -rf x"]);
+  it("adds a form without leading assignments", () => {
+    assert.deepEqual(blockForms("FOO=1 BAR='a b' rm -rf x").slice(0, 2), [
+      "FOO=1 BAR='a b' rm -rf x",
+      "rm -rf x",
+    ]);
   });
 
-  it("adds a form without leading shell keywords for deny and ask", () => {
-    assert.deepEqual(bashBlockForms("then rm -rf x"), ["then rm -rf x", "rm -rf x"]);
-    assert.deepEqual(bashBlockForms("{ ! time rm x"), ["{ ! time rm x", "rm x"]);
-  });
-
-  it("strips leading redirects", () => {
-    assert.deepEqual(bashBlockForms(">/dev/null rm -rf x"), [">/dev/null rm -rf x", "rm -rf x"]);
-    assert.deepEqual(bashBlockForms("2> /dev/null rm x"), ["2> /dev/null rm x", "rm x"]);
-  });
-
-  it("strips assignments whose value is escaped or contains quotes", () => {
-    assert.equal(bashBlockForms("FOO=a\\ b rm -rf x")[1], "rm -rf x");
-    assert.equal(bashBlockForms('FOO=a"b c" rm -rf x')[1], "rm -rf x");
-    assert.equal(bashBlockForms("FOO='a b'c rm -rf x")[1], "rm -rf x");
-  });
-
-  it("strips append, subscript and substitution assignments and function definitions", () => {
-    for (const segment of [
+  it("finds the command after assignments in any spelling", () => {
+    for (const command of [
       "FOO+=1 touch pwned",
       "FOO=$(echo a) touch pwned",
       "a[0]=1 touch pwned",
-      "function f { touch pwned",
+      "FOO=a\\ b touch pwned",
+      'FOO=a"b c" touch pwned',
+      "FOO='a b'c touch pwned",
     ]) {
-      assert.ok(bashBlockForms(segment).includes("touch pwned"), segment);
+      assert.ok(blockForms(command).includes("touch pwned"), command);
     }
   });
 
-  it("adds a form with quotes, backslashes and line continuations removed", () => {
-    for (const segment of ["'touch' pwned", "\\touch pwned", "tou\\\nch pwned"]) {
-      assert.ok(bashBlockForms(segment).includes("touch pwned"), segment);
+  it("finds the command after a redirect", () => {
+    assert.ok(blockForms(">/dev/null touch pwned").includes("touch pwned"));
+    assert.ok(blockForms("2> /dev/null touch pwned").includes("touch pwned"));
+  });
+
+  it("removes quotes, backslashes and line continuations", () => {
+    for (const command of ["'touch' pwned", '"touch" pwned', "\\touch pwned", "tou\\\nch pwned"]) {
+      assert.ok(blockForms(command).includes("touch pwned"), command);
     }
   });
 
-  it("does not strip assignments for allow rules", () => {
-    assert.deepEqual(bashAllowForms("PATH=/evil ls"), ["PATH=/evil ls"]);
+  it("adds a form with the directory of the command removed", () => {
+    assert.ok(blockForms("/bin/touch pwned").includes("touch pwned"));
+  });
+
+  it("adds a form without wrapper commands", () => {
+    for (const command of [
+      "sudo touch pwned",
+      "command touch pwned",
+      "env FOO=1 touch pwned",
+      "nice -n 5 touch pwned",
+      "timeout 5 touch pwned",
+      "sudo -E env touch pwned",
+    ]) {
+      assert.ok(blockForms(command).includes("touch pwned"), command);
+    }
+  });
+
+  it("does not add the assignment-free form to the allow forms", () => {
+    assert.deepEqual(analyzeBash("PATH=/evil ls").units[0]!.allowForms, ["PATH=/evil ls"]);
   });
 });
 

@@ -1,4 +1,4 @@
-import { bashAllowForms, bashBlockForms, matchesBashSpecifier, splitBashCommand } from "./bash.ts";
+import { analyzeBash, type BashUnit, matchesBashSpecifier } from "./bash.ts";
 import { matchesPathSpecifier, mayMatchInside, type PathContext, pathForms } from "./paths.ts";
 import { parseRule, type Rule } from "./rule.ts";
 
@@ -24,16 +24,9 @@ export interface EvaluateInput {
   pathContext: PathContext;
 }
 
-// One thing a rule is matched against: a shell command or a file path.
-interface Unit {
-  /** Forms tested by deny and ask rules: any match counts. */
-  blockForms: string[];
-  /** Forms tested by allow rules: every form must match. */
-  allowForms: string[];
-}
-
 interface Target {
-  units: Unit[];
+  /** The things a rule is matched against: shell commands or file paths. */
+  units: BashUnit[];
   /** False when the call cannot be fully analysed; it can then never be allowed by a specifier rule. */
   complete: boolean;
 }
@@ -58,12 +51,7 @@ function describeTarget(toolName: string, input: unknown, context: PathContext):
   if (toolName === "bash") {
     const command = readField(input, "command");
     if (typeof command !== "string") return { units: [], complete: false };
-    const { segments, complete } = splitBashCommand(command);
-    const units = segments.map((segment) => ({
-      blockForms: bashBlockForms(segment),
-      allowForms: bashAllowForms(segment),
-    }));
-    return { units, complete };
+    return analyzeBash(command);
   }
 
   if (PATH_TOOLS.has(toolName)) {
