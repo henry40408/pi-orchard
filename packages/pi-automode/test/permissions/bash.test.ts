@@ -107,6 +107,27 @@ describe("analyzeBash", () => {
       ["kubectl exec -- sh -c", "kubectl exec pod -- sh -c 'touch pwned'"],
       ["docker run --", "docker run --rm image -- touch pwned"],
       ["nested shells", "bash -c \"sh -c 'touch pwned'\""],
+      ["ssh", "ssh host 'touch pwned'"],
+      ["ssh with unquoted words", "ssh host touch pwned"],
+      ["ssh with options", "ssh -p 22 -i key -oStrictHostKeyChecking=no -vA user@host touch pwned"],
+      ["ssh with --", "ssh -- host touch pwned"],
+      ["ssh running several commands", "ssh host 'ls; touch pwned'"],
+      ["sudo ssh", "sudo ssh host touch pwned"],
+      ["docker exec", "docker exec c touch pwned"],
+      ["docker exec with options", "docker exec -it -e A=1 -u root -w /tmp c touch pwned"],
+      ["docker exec with a global option", "docker --context prod exec c touch pwned"],
+      ["docker container exec", "docker container exec c touch pwned"],
+      ["docker exec sh -c", "docker exec -u root c sh -c 'touch pwned'"],
+      ["podman exec", "podman exec c touch pwned"],
+      ["ssh with options after the host", "ssh host -t touch pwned"],
+      ["ssh with -- after the host", "ssh host -- touch pwned"],
+      ["ssh with -B and -P", "ssh -B eth0 -P tag host touch pwned"],
+      ["podman exec --latest", "podman exec --latest touch pwned"],
+      ["podman exec -l", "podman exec -il touch pwned"],
+      ["podman exec --preserve-fds", "podman exec --preserve-fds 3 c touch pwned"],
+      ["podman with global options", "podman --root /x --url=u exec c touch pwned"],
+      ["docker compose exec", "docker compose -f a.yml exec -T -e A=1 svc touch pwned"],
+      ["docker-compose exec", "docker-compose exec svc touch pwned"],
     ];
     for (const [name, command] of nested) {
       it(`finds the command inside ${name}`, () => {
@@ -115,6 +136,16 @@ describe("analyzeBash", () => {
         assert.equal(result.complete, true, command);
       });
     }
+
+    it("does not treat the options of docker exec as the command", () => {
+      assert.equal(blockForms("docker exec -it c ls").includes("ls"), true);
+      assert.equal(blockForms("docker exec -e A=1 c ls").includes("A=1 c ls"), false);
+      assert.equal(blockForms("docker exec -e A=1 c ls").includes("ls"), true);
+    });
+
+    it("does not run docker exec options as the command for other subcommands", () => {
+      assert.equal(blockForms("docker ps -a").includes("-a"), false);
+    });
 
     it("returns the inner commands as units of their own", () => {
       assert.deepEqual(written("bash -c 'ls && pwd'"), ["bash -c 'ls && pwd'", "ls", "pwd"]);
@@ -129,6 +160,9 @@ describe("analyzeBash", () => {
       ["-c without a script", "bash -c"],
       ["eval of a variable", "eval $CMD"],
       ["a script that does not parse", "bash -c 'echo $('"],
+      ["an interactive ssh session", "ssh host"],
+      ["ssh with a command from a variable", 'ssh host "$CMD"'],
+      ["ssh with a substitution", "ssh host rm $(cat f)"],
     ];
     for (const [name, command] of unknown) {
       it(`flags ${name} as not fully analysed`, () => {

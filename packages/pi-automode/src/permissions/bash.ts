@@ -175,7 +175,17 @@ export function analyzeBash(command: string): BashAnalysis {
     units.push(describeCommand({ assignments, name: node.name, args }));
 
     const words = [node.name, ...args];
-    visitInterpreter(words.slice(embeddedCommandStart(words.map(wordValue))), depth);
+    const { start, remoteShell } = embeddedCommand(words.map(wordValue));
+    const embedded = words.slice(start);
+    if (remoteShell) return visitShellWords(embedded, depth);
+    visitInterpreter(embedded, depth);
+  }
+
+  // The words are joined into one string and run by a shell, as `eval` and `ssh` do.
+  function visitShellWords(words: (Word | Assignment)[], depth: number): void {
+    // Without a command, ssh opens an interactive shell.
+    if (words.length === 0 || !words.every(isLiteralWord)) return markIncomplete();
+    visitShellText(words.map(wordValue).join(" "), depth);
   }
 
   // Commands that run a string as shell code: `bash -c '...'` and `eval ...`.
@@ -185,9 +195,8 @@ export function analyzeBash(command: string): BashAnalysis {
     const program = basename(first.value);
 
     if (program === "eval") {
-      const operands = words.slice(1);
-      if (!operands.every(isLiteralWord)) return markIncomplete();
-      return visitShellText(operands.map(wordValue).join(" "), depth);
+      if (words.length === 1) return;
+      return visitShellWords(words.slice(1), depth);
     }
     if (!SHELL_INTERPRETERS.has(program)) return;
 
@@ -365,20 +374,143 @@ function findShellScript(words: (Word | Assignment)[]): Word | undefined {
   return undefined;
 }
 
+interface EmbeddedCommand {
+  /** Index in the words where the command that really runs starts. */
+  start: number;
+  /** True when the words from `start` are joined and parsed by a remote shell (ssh). */
+  remoteShell: boolean;
+}
+
+interface OptionsWithValue {
+  /** Short options that take a value, as a string of letters. */
+  letters: string;
+  /** Long options that take a value as the next word. */
+  long: ReadonlySet<string>;
+}
+
+// Options of ssh(1) that take a value.
+const SSH_OPTIONS: OptionsWithValue = { letters: "BbcDEeFIiJLlmOoPpQRSWw", long: new Set() };
+const DOCKER_GLOBAL_OPTIONS: OptionsWithValue = {
+  letters: "Hcl",
+  long: new Set(["--host", "--context", "--config", "--log-level", "--tlscacert", "--tlscert", "--tlskey"]),
+};
+const PODMAN_GLOBAL_OPTIONS: OptionsWithValue = {
+  letters: "clu",
+  long: new Set([
+    "--cgroup-manager", "--conmon", "--connection", "--events-backend", "--hooks-dir", "--identity",
+    "--imagestore", "--log-level", "--module", "--network-cmd-path", "--network-config-dir",
+    "--registries-conf", "--root", "--runroot", "--runtime", "--runtime-flag", "--storage-driver",
+    "--storage-opt", "--tmpdir", "--url", "--volumepath",
+  ]),
+};
+const DOCKER_EXEC_OPTIONS: OptionsWithValue = {
+  letters: "euw",
+  long: new Set(["--env", "--env-file", "--user", "--workdir", "--detach-keys", "--preserve-fds", "--preserve-fd"]),
+};
+const COMPOSE_OPTIONS: OptionsWithValue = {
+  letters: "fp",
+  long: new Set([
+    "--file", "--project-name", "--project-directory", "--profile", "--env-file", "--parallel", "--ansi", "--progress",
+  ]),
+};
+const COMPOSE_EXEC_OPTIONS: OptionsWithValue = {
+  letters: "euw",
+  long: new Set(["--env", "--user", "--workdir", "--index"]),
+};
+
 /**
  * Where the command that really runs starts in `words`: after wrappers such as
- * `sudo` and after the `--` of `kubectl exec POD -- CMD` or `docker run ... -- CMD`.
+ * `sudo`, after the host of `ssh`, after the container of `docker exec`, and
+ * after the `--` of `kubectl exec POD -- CMD` or `docker run ... -- CMD`.
  */
-function embeddedCommandStart(words: string[]): number {
+function embeddedCommand(words: string[]): EmbeddedCommand {
   let start = 0;
   for (;;) {
     const rest = words.slice(start);
     let next = start + (rest.length - withoutWrappers(rest).length);
-    const afterSeparator = afterContainerSeparator(words.slice(next));
-    if (afterSeparator !== undefined) next = words.length - afterSeparator.length;
-    if (next === start) return start;
+    const hop = commandAfterHop(words.slice(next));
+    if (hop?.remoteShell) return { start: next + hop.start, remoteShell: true };
+    if (hop) {
+      next += hop.start;
+    } else {
+      const afterSeparator = afterContainerSeparator(words.slice(next));
+      if (afterSeparator !== undefined) next = words.length - afterSeparator.length;
+    }
+    if (next === start) return { start, remoteShell: false };
     start = next;
   }
+}
+
+/** The command that `ssh HOST CMD` or `docker exec CONTAINER CMD` runs, if `words` is one of them. */
+function commandAfterHop(words: string[]): EmbeddedCommand | undefined {
+  const program = basename(words[0] ?? "");
+  if (program === "ssh") {
+    const host = skipOptions(words, 1, SSH_OPTIONS);
+    if (host >= words.length) return undefined;
+    // ssh reads options again after the host: `ssh host -t CMD`.
+    return { start: skipOptions(words, host + 1, SSH_OPTIONS), remoteShell: true };
+  }
+
+  if (program === "docker-compose") return commandAfterExec(words, 1, COMPOSE_OPTIONS, COMPOSE_EXEC_OPTIONS);
+
+  if (program === "docker" || program === "podman") {
+    let subcommand = skipOptions(words, 1, program === "podman" ? PODMAN_GLOBAL_OPTIONS : DOCKER_GLOBAL_OPTIONS);
+    if (program === "docker" && words[subcommand] === "compose") {
+      return commandAfterExec(words, subcommand + 1, COMPOSE_OPTIONS, COMPOSE_EXEC_OPTIONS);
+    }
+    if (words[subcommand] === "container") subcommand++;
+    return commandAfterExec(words, subcommand, undefined, DOCKER_EXEC_OPTIONS);
+  }
+
+  return undefined;
+}
+
+/** The command of `exec [OPTIONS] TARGET CMD`, where `words[from]` is the subcommand or the options before it. */
+function commandAfterExec(
+  words: string[],
+  from: number,
+  globalOptions: OptionsWithValue | undefined,
+  execOptions: OptionsWithValue,
+): EmbeddedCommand | undefined {
+  const subcommand = globalOptions ? skipOptions(words, from, globalOptions) : from;
+  if (words[subcommand] !== "exec") return undefined;
+  const target = skipOptions(words, subcommand + 1, execOptions);
+  // `podman exec --latest CMD` has no container: the first word is already the command.
+  const hasTarget = !words.slice(subcommand + 1, target).some(isLatestOption);
+  const command = hasTarget ? target + 1 : target;
+  // Words after the target are the command, even when a `--` separates them.
+  return { start: Math.min(words[command] === "--" ? command + 1 : command, words.length), remoteShell: false };
+}
+
+function isLatestOption(option: string): boolean {
+  if (option.startsWith("--")) return option === "--latest";
+  if (!option.startsWith("-")) return false;
+  // Letters after one that takes a value belong to that value.
+  const letters = option.slice(1);
+  const valued = letters.search(/[euw]/);
+  return (valued === -1 ? letters : letters.slice(0, valued)).includes("l");
+}
+
+/** The index of the first word from `from` that is not an option or the value of one. */
+function skipOptions(words: string[], from: number, valued: OptionsWithValue): number {
+  let i = from;
+  while (i < words.length) {
+    const word = words[i]!;
+    if (word === "--") return i + 1;
+    if (!word.startsWith("-") || word === "-") return i;
+    i += optionTakesNextWord(word, valued) ? 2 : 1;
+  }
+  return i;
+}
+
+function optionTakesNextWord(option: string, valued: OptionsWithValue): boolean {
+  if (option.startsWith("--")) return valued.long.has(option);
+  // In `-it` or `-eVAR`, the first letter that takes a value ends the option.
+  // The value is the next word only when that letter is the last one.
+  for (let i = 1; i < option.length; i++) {
+    if (valued.letters.includes(option[i]!)) return i === option.length - 1;
+  }
+  return false;
 }
 
 function afterContainerSeparator(words: string[]): string[] | undefined {
@@ -404,8 +536,8 @@ function describeCommand({ assignments, name, args }: CommandParts): BashUnit {
     writtenWithoutAssignments,
     unquoted,
     unquotedBase,
-    unquoted.slice(embeddedCommandStart(unquoted)),
-    unquotedBase.slice(embeddedCommandStart(unquotedBase)),
+    unquoted.slice(embeddedCommand(unquoted).start),
+    unquotedBase.slice(embeddedCommand(unquotedBase).start),
   ];
   const blockForms = [...new Set(variants.map((words) => collapseWhitespace(words.join(" "))))];
   return { blockForms, allowForms: [collapseWhitespace(written.join(" "))] };

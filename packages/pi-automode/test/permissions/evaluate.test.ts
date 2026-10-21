@@ -275,6 +275,10 @@ describe("hostile input", () => {
       "eval touch x",
       "kubectl exec pod -- touch x",
       "docker exec c -- sh -c 'touch x'",
+      "docker exec -it -e A=1 c touch x",
+      "podman exec c sh -c 'touch x'",
+      "ssh host 'ls; touch x'",
+      "ssh -p 22 user@host touch x",
     ]) {
       assert.equal(evaluate(rules, "bash", bash(command)).decision, "deny", command);
     }
