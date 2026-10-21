@@ -43,7 +43,8 @@ const MAX_DANGLING_SYMLINK_HOPS = 40;
 function canonicalize(path: string, hops = 0): string {
   const missing: string[] = [];
   let current = path;
-  for (;;) {
+  // Each pass moves one directory up, so the loop ends at the root.
+  while (current !== dirname(current)) {
     try {
       return join(realpathSync(current), ...missing);
     } catch {
@@ -51,12 +52,11 @@ function canonicalize(path: string, hops = 0): string {
       if (target !== undefined && hops < MAX_DANGLING_SYMLINK_HOPS) {
         return join(canonicalize(target, hops + 1), ...missing);
       }
-      const parent = dirname(current);
-      if (parent === current) return path;
       missing.unshift(basename(current));
-      current = parent;
+      current = dirname(current);
     }
   }
+  return path;
 }
 
 function danglingSymlinkTarget(path: string): string | undefined {
