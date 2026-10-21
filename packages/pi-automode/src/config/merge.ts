@@ -10,7 +10,7 @@ export interface MergeResult {
 }
 
 function union(base: string[], extra: string[] = []): string[] {
-  return [...new Set([...base, ...extra])];
+  return Array.from(new Set([...base, ...extra]));
 }
 
 /**

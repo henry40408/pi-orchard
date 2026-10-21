@@ -115,7 +115,7 @@ export function pathForms(raw: string, context: PathContext, options: PathFormsO
     forms.add(spelling);
     forms.add(withRealBase(spelling, context));
   }
-  return [...forms];
+  return Array.from(forms);
 }
 
 type Token =
@@ -180,13 +180,15 @@ function withRealLiteralPrefix(specifier: string, from = 0): string {
 function specifierTokenSets(specifier: string, context: PathContext): Token[][] {
   if (isAbsolute(specifier)) {
     const resolved = resolve(specifier);
-    return [...new Set([resolved, withRealLiteralPrefix(resolved)])].map((path) => globTokens(path, context));
+    const paths = new Set([resolved, withRealLiteralPrefix(resolved)]);
+    return Array.from(paths, (path) => globTokens(path, context));
   }
   const underHome = specifier === "~" || specifier.startsWith("~/");
   const base = underHome ? context.home : context.cwd;
   const rest = underHome ? specifier.slice(2) : specifier;
   const realBase = canonicalize(base);
-  const sets = [...new Set([base, realBase])].map((candidate) => tokensUnder(candidate, rest, context));
+  const bases = new Set([base, realBase]);
+  const sets = Array.from(bases, (candidate) => tokensUnder(candidate, rest, context));
 
   const resolved = resolve(base, rest);
   if (resolved !== base && !resolved.startsWith(`${base}/`)) return sets;

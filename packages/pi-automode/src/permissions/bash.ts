@@ -539,7 +539,7 @@ function describeCommand({ assignments, name, args }: CommandParts): BashUnit {
     unquoted.slice(embeddedCommand(unquoted).start),
     unquotedBase.slice(embeddedCommand(unquotedBase).start),
   ];
-  const blockForms = [...new Set(variants.map((words) => collapseWhitespace(words.join(" "))))];
+  const blockForms = Array.from(new Set(variants.map((words) => collapseWhitespace(words.join(" ")))));
   return { blockForms, allowForms: [collapseWhitespace(written.join(" "))] };
 }
 
