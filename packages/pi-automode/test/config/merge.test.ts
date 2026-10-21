@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 import { DEFAULT_CONFIG, resolveConfig } from "../../src/config/defaults.ts";
 import { applyProjectConfig } from "../../src/config/merge.ts";
 
@@ -12,96 +13,96 @@ const user = resolveConfig({
 describe("applyProjectConfig", () => {
   it("keeps the user layer when the project config is empty", () => {
     const { config, ignored } = applyProjectConfig(user, {});
-    expect(config).toEqual(user);
-    expect(ignored).toEqual([]);
+    assert.deepEqual(config, user);
+    assert.deepEqual(ignored, []);
   });
 
   it("does not mutate the user config it receives", () => {
     const snapshot = structuredClone(user);
     applyProjectConfig(user, { permissions: { deny: ["read(./.env*)"] } });
-    expect(user).toEqual(snapshot);
+    assert.deepEqual(user, snapshot);
   });
 
   it("unions deny and ask without duplicates", () => {
     const { config } = applyProjectConfig(user, {
       permissions: { deny: ["bash(sudo:*)", "read(./.env*)"], ask: ["write(./package.json)"] },
     });
-    expect(config.permissions.deny).toEqual(["bash(sudo:*)", "read(./.env*)"]);
-    expect(config.permissions.ask).toEqual(["bash(git push:*)", "write(./package.json)"]);
+    assert.deepEqual(config.permissions.deny, ["bash(sudo:*)", "read(./.env*)"]);
+    assert.deepEqual(config.permissions.ask, ["bash(git push:*)", "write(./package.json)"]);
   });
 
   it("ignores allow from the project layer", () => {
     const { config, ignored } = applyProjectConfig(user, {
       permissions: { allow: ["bash(rm:*)"] },
     });
-    expect(config.permissions.allow).toEqual(["read"]);
-    expect(ignored).toEqual(["permissions.allow"]);
+    assert.deepEqual(config.permissions.allow, ["read"]);
+    assert.deepEqual(ignored, ["permissions.allow"]);
   });
 
   describe("mode", () => {
     it("accepts a stricter mode", () => {
-      expect(applyProjectConfig(user, { mode: "rules" }).config.mode).toBe("rules");
-      expect(applyProjectConfig(user, { mode: "ask" }).config.mode).toBe("ask");
+      assert.equal(applyProjectConfig(user, { mode: "rules" }).config.mode, "rules");
+      assert.equal(applyProjectConfig(user, { mode: "ask" }).config.mode, "ask");
     });
 
     it("ignores a looser mode", () => {
       const strict = resolveConfig({ mode: "rules" });
       const { config, ignored } = applyProjectConfig(strict, { mode: "off" });
-      expect(config.mode).toBe("rules");
-      expect(ignored).toEqual(["mode"]);
+      assert.equal(config.mode, "rules");
+      assert.deepEqual(ignored, ["mode"]);
     });
 
     it("does not report the same mode as ignored", () => {
-      expect(applyProjectConfig(user, { mode: "auto" }).ignored).toEqual([]);
+      assert.deepEqual(applyProjectConfig(user, { mode: "auto" }).ignored, []);
     });
 
     it("accepts auto from the project when the user mode is off", () => {
       const off = resolveConfig({ mode: "off" });
-      expect(applyProjectConfig(off, { mode: "auto" }).config.mode).toBe("auto");
+      assert.equal(applyProjectConfig(off, { mode: "auto" }).config.mode, "auto");
     });
 
     it("ignores rules from the project when the user mode is ask", () => {
       const ask = resolveConfig({ mode: "ask" });
       const { config, ignored } = applyProjectConfig(ask, { mode: "rules" });
-      expect(config.mode).toBe("ask");
-      expect(ignored).toEqual(["mode"]);
+      assert.equal(config.mode, "ask");
+      assert.deepEqual(ignored, ["mode"]);
     });
   });
 
   describe("allowInsideWorkingDirectory", () => {
     it("lets the project turn it off", () => {
       const { config } = applyProjectConfig(user, { allowInsideWorkingDirectory: false });
-      expect(config.allowInsideWorkingDirectory).toBe(false);
+      assert.equal(config.allowInsideWorkingDirectory, false);
     });
 
     it("does not let the project turn it on", () => {
       const { config, ignored } = applyProjectConfig(DEFAULT_CONFIG, {
         allowInsideWorkingDirectory: true,
       });
-      expect(config.allowInsideWorkingDirectory).toBe(false);
-      expect(ignored).toEqual(["allowInsideWorkingDirectory"]);
+      assert.equal(config.allowInsideWorkingDirectory, false);
+      assert.deepEqual(ignored, ["allowInsideWorkingDirectory"]);
     });
   });
 
   describe("classifier", () => {
     it("lets the project disable the classifier", () => {
       const { config } = applyProjectConfig(user, { classifier: { enabled: false } });
-      expect(config.classifier.enabled).toBe(false);
+      assert.equal(config.classifier.enabled, false);
     });
 
     it("does not let the project re-enable the classifier", () => {
       const disabled = resolveConfig({ classifier: { enabled: false } });
       const { config, ignored } = applyProjectConfig(disabled, { classifier: { enabled: true } });
-      expect(config.classifier.enabled).toBe(false);
-      expect(ignored).toEqual(["classifier.enabled"]);
+      assert.equal(config.classifier.enabled, false);
+      assert.deepEqual(ignored, ["classifier.enabled"]);
     });
 
     it("unions softDeny and hardDeny", () => {
       const { config } = applyProjectConfig(user, {
         classifier: { softDeny: ["Force pushing"], hardDeny: ["Deleting the repo"] },
       });
-      expect(config.classifier.softDeny).toEqual(["$defaults", "Force pushing"]);
-      expect(config.classifier.hardDeny).toEqual(["$defaults", "Deleting the repo"]);
+      assert.deepEqual(config.classifier.softDeny, ["$defaults", "Force pushing"]);
+      assert.deepEqual(config.classifier.hardDeny, ["$defaults", "Deleting the repo"]);
     });
 
     it("ignores fields that change where data goes, the cost, or the judging basis", () => {
@@ -115,8 +116,8 @@ describe("applyProjectConfig", () => {
           allow: ["Anything"],
         },
       });
-      expect(config.classifier).toEqual(user.classifier);
-      expect(ignored).toEqual([
+      assert.deepEqual(config.classifier, user.classifier);
+      assert.deepEqual(ignored, [
         "classifier.model",
         "classifier.reasoningLevel",
         "classifier.timeoutMs",
@@ -132,12 +133,12 @@ describe("applyProjectConfig", () => {
       allowInsideWorkingDirectory: false,
       classifier: { enabled: false },
     });
-    expect(ignored).toEqual([]);
+    assert.deepEqual(ignored, []);
   });
 
   it("ignores log from the project layer", () => {
     const { config, ignored } = applyProjectConfig(user, { log: { classifierIo: true } });
-    expect(config.log).toEqual(user.log);
-    expect(ignored).toEqual(["log"]);
+    assert.deepEqual(config.log, user.log);
+    assert.deepEqual(ignored, ["log"]);
   });
 });
