@@ -1,17 +1,30 @@
+import { fileURLToPath } from "node:url";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { COMMAND_ARGUMENTS, runCommand } from "./command.ts";
 import { FOOTER_KEY, footerText } from "./footer.ts";
-import { announceStatus, answerQueries } from "./handshake.ts";
+import { answerQueries, announceStatus, type StatusMessage } from "./handshake.ts";
 import { createToolCallHandler } from "./hook.ts";
 import { createPiComplete } from "./model.ts";
-import { AutomodeState } from "./state.ts";
+import { AutomodeState, parentModeFromEnvironment } from "./state.ts";
+
+const ENTRY_PATH = fileURLToPath(import.meta.url);
 
 export default function (pi: ExtensionAPI): void {
-  const state = new AutomodeState(getAgentDir());
+  const state = new AutomodeState(getAgentDir(), parentModeFromEnvironment(process.env));
+
+  // If the status cannot be built (say, the config cannot be read), a silent
+  // handler would look like "automode is not installed". Report the strictest mode instead.
+  function statusMessage(cwd?: string): StatusMessage {
+    try {
+      return { ...state.status(cwd), entry: ENTRY_PATH };
+    } catch {
+      return { mode: "ask", active: true, entry: ENTRY_PATH };
+    }
+  }
 
   function publishStatus(context: Pick<ExtensionContext, "cwd" | "ui">): void {
     context.ui.setStatus(FOOTER_KEY, footerText(state, context.cwd));
-    announceStatus(pi.events, state.status(context.cwd));
+    announceStatus(pi.events, statusMessage(context.cwd));
   }
 
   pi.on("session_start", (_event, context) => {
@@ -40,5 +53,5 @@ export default function (pi: ExtensionAPI): void {
     },
   });
 
-  answerQueries(pi.events, () => state.status());
+  answerQueries(pi.events, () => statusMessage());
 }

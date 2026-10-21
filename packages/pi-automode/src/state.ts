@@ -21,6 +21,23 @@ export function isMode(value: string): value is Mode {
   return (MODES as readonly string[]).includes(value);
 }
 
+/** A parent pi sets this for a child pi; the child's mode is then never looser than the parent's. */
+export const PARENT_MODE_ENV = "PI_AUTOMODE_PARENT_MODE";
+
+// From loosest to strictest. `rules` is stricter than `auto` because it never lets the classifier allow.
+const MODE_STRICTNESS: readonly Mode[] = ["off", "auto", "rules", "ask"];
+
+export function stricterMode(first: Mode, second: Mode): Mode {
+  return MODE_STRICTNESS.indexOf(first) >= MODE_STRICTNESS.indexOf(second) ? first : second;
+}
+
+/** An unset variable means no floor; a value that is not a mode means the strictest floor. */
+export function parentModeFromEnvironment(environment: Record<string, string | undefined>): Mode | undefined {
+  const value = environment[PARENT_MODE_ENV];
+  if (value === undefined) return undefined;
+  return isMode(value) ? value : "ask";
+}
+
 /**
  * The config of the running session. It is read again for a new working
  * directory and on `reload`. `setMode` changes the mode for this session only;
@@ -31,9 +48,11 @@ export class AutomodeState {
   #cwd: string | undefined;
   #loaded: LoadedConfig | undefined;
   #modeOverride: Mode | undefined;
+  #parentMode: Mode | undefined;
 
-  constructor(agentDir: string) {
+  constructor(agentDir: string, parentMode?: Mode) {
     this.#agentDir = agentDir;
+    this.#parentMode = parentMode;
   }
 
   reload(cwd: string): LoadedConfig {
@@ -55,8 +74,9 @@ export class AutomodeState {
   config(cwd: string): Config {
     const { config, errors } = this.#ensureLoaded(cwd);
     // An invalid file must keep the mode at ask, whatever was set before.
-    if (errors.length > 0 || !this.#modeOverride) return config;
-    return { ...config, mode: this.#modeOverride };
+    const chosen = errors.length === 0 && this.#modeOverride ? this.#modeOverride : config.mode;
+    const mode = this.#parentMode ? stricterMode(chosen, this.#parentMode) : chosen;
+    return mode === config.mode ? config : { ...config, mode };
   }
 
   problems(cwd: string): { errors: string[]; ignored: string[] } {
@@ -64,9 +84,17 @@ export class AutomodeState {
     return { errors, ignored };
   }
 
+  /** True in a child pi: its user messages come from the parent agent, not from a person. */
+  get isChild(): boolean {
+    return this.#parentMode !== undefined;
+  }
+
   /** Refuses while a config file is invalid, so a broken file cannot be hidden by a command. */
   setMode(cwd: string, mode: Mode): string | undefined {
     if (this.#ensureLoaded(cwd).errors.length > 0) return "A config file is invalid. Fix it and run /automode reload first.";
+    if (this.#parentMode && stricterMode(mode, this.#parentMode) !== mode) {
+      return `The parent session runs in ${this.#parentMode} mode; this session cannot be looser.`;
+    }
     this.#modeOverride = mode;
     return undefined;
   }

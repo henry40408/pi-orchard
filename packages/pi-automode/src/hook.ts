@@ -23,6 +23,14 @@ export interface HookDependencies<Context extends HookContext> {
 
 type ToolCall = Pick<ToolCallEvent, "toolName" | "input">;
 
+// In a child pi the only user message is the task text, written by the parent
+// agent. A prompt-injected parent could claim the user agreed to anything, so
+// it is not offered to the classifier as what the user asked for.
+function conversationFor(state: AutomodeState, context: HookContext, config: Config) {
+  const conversation = collectConversation(context.sessionManager.getBranch(), config.classifier.context);
+  return state.isChild ? { ...conversation, userMessages: [] } : conversation;
+}
+
 // The whole input is shown: a cut-off could hide the part that matters.
 function describeCall(event: ToolCall): string {
   return `${event.toolName} ${JSON.stringify(event.input, null, 2) ?? ""}`;
@@ -54,7 +62,7 @@ export function createToolCallHandler<Context extends HookContext>(dependencies:
           classify({
             complete: dependencies.completeFor(context, config.classifier),
             rules: classifierRules(config.classifier),
-            conversation: collectConversation(context.sessionManager.getBranch(), config.classifier.context),
+            conversation: conversationFor(dependencies.state, context, config),
             toolName: event.toolName,
             input: event.input,
             timeoutMs: config.classifier.timeoutMs,

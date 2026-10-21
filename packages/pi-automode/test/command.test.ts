@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { runCommand } from "../src/command.ts";
-import { announceStatus, answerQueries, QUERY_CHANNEL, STATUS_CHANNEL } from "../src/handshake.ts";
-import { AutomodeState, type AutomodeStatus } from "../src/state.ts";
+import { announceStatus, answerQueries, QUERY_CHANNEL, STATUS_CHANNEL, type StatusMessage } from "../src/handshake.ts";
+import { AutomodeState } from "../src/state.ts";
 
 function setup(userConfig?: string) {
   const root = mkdtempSync(join(tmpdir(), "automode-command-"));
@@ -69,13 +69,14 @@ describe("handshake", () => {
 
   it("announces the status", () => {
     const bus = fakeBus();
-    announceStatus(bus, { mode: "auto", active: true });
-    assert.deepEqual(bus.emitted, [[STATUS_CHANNEL, { mode: "auto", active: true }]]);
+    const message: StatusMessage = { mode: "auto", active: true, entry: "/x/index.ts" };
+    announceStatus(bus, message);
+    assert.deepEqual(bus.emitted, [[STATUS_CHANNEL, message]]);
   });
 
   it("answers a query with the current status", () => {
     const bus = fakeBus();
-    const status: AutomodeStatus = { mode: "rules", active: true };
+    const status: StatusMessage = { mode: "rules", active: true, entry: "/x/index.ts" };
     answerQueries(bus, () => status);
     bus.emit(QUERY_CHANNEL, undefined);
     assert.deepEqual(bus.emitted.at(-1), [STATUS_CHANNEL, status]);

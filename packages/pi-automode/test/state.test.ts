@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { AutomodeState, configPaths } from "../src/state.ts";
+import { AutomodeState, configPaths, PARENT_MODE_ENV, parentModeFromEnvironment } from "../src/state.ts";
 
 function setup(userConfig?: string) {
   const root = mkdtempSync(join(tmpdir(), "automode-state-"));
@@ -40,6 +40,29 @@ describe("AutomodeState", () => {
     assert.equal(state.config(cwd).mode, "ask");
     assert.match(state.setMode(cwd, "off") ?? "", /invalid/);
     assert.equal(state.status(cwd).mode, "ask");
+  });
+
+  it("never goes below the parent mode", () => {
+    const { agentDir, cwd } = setup('{"mode":"auto"}');
+    const child = new AutomodeState(agentDir, "rules");
+    assert.equal(child.config(cwd).mode, "rules");
+    assert.match(child.setMode(cwd, "off") ?? "", /parent session/);
+    assert.equal(child.setMode(cwd, "ask"), undefined);
+    assert.equal(child.config(cwd).mode, "ask");
+    child.reload(cwd);
+    assert.equal(child.config(cwd).mode, "rules");
+  });
+
+  it("keeps a stricter own mode over a looser parent mode", () => {
+    const { agentDir, cwd } = setup('{"mode":"ask"}');
+    assert.equal(new AutomodeState(agentDir, "auto").config(cwd).mode, "ask");
+  });
+
+  it("reads the parent mode from the environment, and treats junk as ask", () => {
+    assert.equal(parentModeFromEnvironment({}), undefined);
+    assert.equal(parentModeFromEnvironment({ [PARENT_MODE_ENV]: "rules" }), "rules");
+    assert.equal(parentModeFromEnvironment({ [PARENT_MODE_ENV]: "yolo" }), "ask");
+    assert.equal(parentModeFromEnvironment({ [PARENT_MODE_ENV]: "" }), "ask");
   });
 
   it("keeps the mode override when the working directory changes", () => {
