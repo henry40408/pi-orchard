@@ -38,6 +38,9 @@ const MAX_NESTING_DEPTH = 50;
 const OUTPUT_FILE_OPERATORS = new Set([">", ">>", ">|", "&>", "&>>", "<>"]);
 const DESCRIPTOR_DUPLICATION_OPERATORS = new Set([">&", "<&"]);
 const GLOB_CHARACTERS = /[*?[]/;
+const SHELL_INTERPRETERS = new Set(["bash", "sh", "zsh", "dash", "ksh", "fish"]);
+// Their `--` separates their own arguments from the command they run.
+const CONTAINER_TOOLS = new Set(["docker", "podman", "kubectl"]);
 // Commands that run their arguments as another command: `sudo rm` also is `rm`.
 const WRAPPER_COMMANDS = new Set([
   "command",
@@ -170,6 +173,32 @@ export function analyzeBash(command: string): BashAnalysis {
     visitWord(node.name, depth);
     if (!isStaticCommandName(node.name)) markIncomplete();
     units.push(describeCommand({ assignments, name: node.name, args }));
+
+    const words = [node.name, ...args];
+    visitInterpreter(words.slice(embeddedCommandStart(words.map(wordValue))), depth);
+  }
+
+  // Commands that run a string as shell code: `bash -c '...'` and `eval ...`.
+  function visitInterpreter(words: (Word | Assignment)[], depth: number): void {
+    const first = words[0];
+    if (!first || first.type !== "Word") return;
+    const program = basename(first.value);
+
+    if (program === "eval") {
+      const operands = words.slice(1);
+      if (!operands.every(isLiteralWord)) return markIncomplete();
+      return visitShellText(operands.map(wordValue).join(" "), depth);
+    }
+    if (!SHELL_INTERPRETERS.has(program)) return;
+
+    const script = findShellScript(words);
+    // Without -c the shell reads a script file or stdin, which we cannot see.
+    if (!script || !isLiteralWord(script)) return markIncomplete();
+    visitShellText(script.value, depth);
+  }
+
+  function visitShellText(text: string, depth: number): void {
+    visitScript(parse(text), depth + 1);
   }
 
   function visitWord(word: Word, depth: number): void {
@@ -301,13 +330,61 @@ function writesToFile(operator: string, target: Word): boolean {
   return target.text !== "/dev/null";
 }
 
-// `$cmd`, `{rm,ls}` and `r?` do not name one fixed command.
-function isStaticCommandName(name: Word): boolean {
-  if (GLOB_CHARACTERS.test(name.value)) return false;
-  return (name.parts ?? []).every((part) => {
+// True when the word's value is known without running anything: no expansions.
+function isLiteralWord(word: Word | Assignment): boolean {
+  if (word.type !== "Word") return false;
+  return (word.parts ?? []).every((part) => {
     if (part.type === "DoubleQuoted") return part.parts.every((child) => child.type === "Literal");
     return part.type === "Literal" || part.type === "SingleQuoted" || part.type === "AnsiCQuoted";
   });
+}
+
+function wordValue(word: Word | Assignment): string {
+  return word.type === "Word" ? word.value : word.text;
+}
+
+// `$cmd`, `{rm,ls}` and `r?` do not name one fixed command.
+function isStaticCommandName(name: Word): boolean {
+  return isLiteralWord(name) && !GLOB_CHARACTERS.test(name.value);
+}
+
+// Options of a shell that take the next word as their value.
+const SHELL_OPTIONS_WITH_VALUE = new Set(["-o", "+o", "-O", "+O", "--rcfile", "--init-file"]);
+
+// The script of `bash [options] -c SCRIPT`, or undefined when there is no -c.
+function findShellScript(words: (Word | Assignment)[]): Word | undefined {
+  for (let i = 1; i < words.length; i++) {
+    const option = wordValue(words[i]!);
+    if (!/^[-+]/.test(option) || option === "--") return undefined;
+    if (/^-[A-Za-z]*c[A-Za-z]*$/.test(option)) {
+      const script = words[i + 1];
+      return script?.type === "Word" ? script : undefined;
+    }
+    if (SHELL_OPTIONS_WITH_VALUE.has(option)) i++;
+  }
+  return undefined;
+}
+
+/**
+ * Where the command that really runs starts in `words`: after wrappers such as
+ * `sudo` and after the `--` of `kubectl exec POD -- CMD` or `docker run ... -- CMD`.
+ */
+function embeddedCommandStart(words: string[]): number {
+  let start = 0;
+  for (;;) {
+    const rest = words.slice(start);
+    let next = start + (rest.length - withoutWrappers(rest).length);
+    const afterSeparator = afterContainerSeparator(words.slice(next));
+    if (afterSeparator !== undefined) next = words.length - afterSeparator.length;
+    if (next === start) return start;
+    start = next;
+  }
+}
+
+function afterContainerSeparator(words: string[]): string[] | undefined {
+  if (words.length === 0 || !CONTAINER_TOOLS.has(basename(words[0]!))) return undefined;
+  const separator = words.indexOf("--");
+  return separator === -1 ? undefined : words.slice(separator + 1);
 }
 
 interface CommandParts {
@@ -327,8 +404,8 @@ function describeCommand({ assignments, name, args }: CommandParts): BashUnit {
     writtenWithoutAssignments,
     unquoted,
     unquotedBase,
-    withoutWrappers(unquoted),
-    withoutWrappers(unquotedBase),
+    unquoted.slice(embeddedCommandStart(unquoted)),
+    unquotedBase.slice(embeddedCommandStart(unquotedBase)),
   ];
   const blockForms = [...new Set(variants.map((words) => collapseWhitespace(words.join(" "))))];
   return { blockForms, allowForms: [collapseWhitespace(written.join(" "))] };

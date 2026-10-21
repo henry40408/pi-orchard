@@ -92,6 +92,51 @@ describe("analyzeBash", () => {
     assert.equal(analyzeBash(`${"( ".repeat(60)}ls${" )".repeat(60)}`).complete, false);
   });
 
+  describe("commands that run a string as shell code", () => {
+    const nested: [string, string][] = [
+      ["bash -c", "bash -c 'ls && touch pwned'"],
+      ["sh -c with double quotes", 'sh -c "touch pwned"'],
+      ["a combined flag", "bash -lc 'touch pwned'"],
+      ["options before -c", "bash -o pipefail -c 'touch pwned'"],
+      ["a full path", "/bin/zsh -c 'touch pwned'"],
+      ["fish -c", "fish -c 'touch pwned'"],
+      ["sudo bash -c", "sudo bash -c 'touch pwned'"],
+      ["eval", "eval touch pwned"],
+      ["eval with a quoted string", "eval 'ls; touch pwned'"],
+      ["kubectl exec --", "kubectl exec pod -- touch pwned"],
+      ["kubectl exec -- sh -c", "kubectl exec pod -- sh -c 'touch pwned'"],
+      ["docker run --", "docker run --rm image -- touch pwned"],
+      ["nested shells", "bash -c \"sh -c 'touch pwned'\""],
+    ];
+    for (const [name, command] of nested) {
+      it(`finds the command inside ${name}`, () => {
+        const result = analyzeBash(command);
+        assert.ok(result.units.some((unit) => unit.allowForms[0] === "touch pwned") || blockForms(command).includes("touch pwned"), command);
+        assert.equal(result.complete, true, command);
+      });
+    }
+
+    it("returns the inner commands as units of their own", () => {
+      assert.deepEqual(written("bash -c 'ls && pwd'"), ["bash -c 'ls && pwd'", "ls", "pwd"]);
+    });
+
+    const unknown = [
+      ["a script from a variable", 'bash -c "$SCRIPT"'],
+      ["a script with a substitution", 'bash -c "rm $(cat f)"'],
+      ["a script file", "bash script.sh"],
+      ["a shell reading stdin", "echo rm | bash"],
+      ["a shell without arguments", "sh"],
+      ["-c without a script", "bash -c"],
+      ["eval of a variable", "eval $CMD"],
+      ["a script that does not parse", "bash -c 'echo $('"],
+    ];
+    for (const [name, command] of unknown) {
+      it(`flags ${name} as not fully analysed`, () => {
+        assert.equal(analyzeBash(command).complete, false);
+      });
+    }
+  });
+
   describe("constructs that used to hide a command", () => {
     const hidden: [string, string][] = [
       ["$'...' with an escaped quote", "echo $'a\\'b' ; touch pwned #'"],

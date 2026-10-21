@@ -267,6 +267,26 @@ describe("hostile input", () => {
     assert.equal(evaluate(rules, "bash", bash("echo hi >&2pwned")).decision, "none");
   });
 
+  it("denies a command run through bash -c, eval or a container", () => {
+    const rules = { allow: ["bash"], deny: ["bash(touch:*)"] };
+    for (const command of [
+      "bash -c 'touch x'",
+      "sudo sh -lc \"ls; touch x\"",
+      "eval touch x",
+      "kubectl exec pod -- touch x",
+      "docker exec c -- sh -c 'touch x'",
+    ]) {
+      assert.equal(evaluate(rules, "bash", bash(command)).decision, "deny", command);
+    }
+  });
+
+  it("does not allow bash -c just because the inner command is allowed", () => {
+    const rules = { allow: ["bash(ls:*)"] };
+    assert.equal(evaluate(rules, "bash", bash("bash -c 'ls'")).decision, "none");
+    assert.equal(evaluate({ allow: ["bash(ls:*)", "bash(bash:*)"] }, "bash", bash("bash -c 'ls'")).decision, "allow");
+    assert.equal(evaluate({ allow: ["bash(bash:*)"] }, "bash", bash('bash -c "$X"')).decision, "none");
+  });
+
   it("never allows a deeply nested command", () => {
     const result = evaluate({ allow: ["bash(echo:*)"] }, "bash", bash("echo $(".repeat(100_000)));
     assert.notEqual(result.decision, "allow");
