@@ -6,8 +6,9 @@ Extensions for the pi coding agent (`@earendil-works/pi-coding-agent`) that let 
 | --- | --- |
 | [`pi-automode`](packages/pi-automode) | Checks every tool call before it runs. Permission rules decide the clear cases; a classifier model judges the rest; anything unclear goes to you. |
 | [`pi-subagent`](packages/pi-subagent) | Gives the agent a `subagent` tool that runs a task in a separate pi process, in the foreground or in the background. When `pi-automode` is installed, the subagent is guarded too. |
+| [`pi-monitor`](packages/pi-monitor) | Gives the agent a `monitor` tool that runs a long-lived command and wakes the model with each batch of its output. When `pi-automode` is installed, the command is checked like a `bash` call. |
 
-The two packages work alone. Together, a subagent can do its work on a cheap model while its tool calls are checked by a stronger one.
+The packages work alone. Together, a subagent can do its work on a cheap model while its tool calls are checked by a stronger one, and a monitored command goes through the same rules as any shell command.
 
 ## Requirements
 
@@ -16,7 +17,7 @@ The two packages work alone. Together, a subagent can do its work on a cheap mod
 
 ## Install
 
-The packages are not on npm. Install both from GitHub (add `@<tag>` to pin a release):
+The packages are not on npm. Install all of them from GitHub (add `@<tag>` to pin a release):
 
 ```sh
 pi install git:github.com/henry40408/pi-orchard
@@ -30,11 +31,12 @@ cd pi-orchard
 npm install
 
 # Try one for a single run:
-pi -e ./packages/pi-automode -e ./packages/pi-subagent
+pi -e ./packages/pi-automode -e ./packages/pi-subagent -e ./packages/pi-monitor
 
 # Or install them for good (add --local to write to .pi/settings.json):
 pi install ./packages/pi-automode
 pi install ./packages/pi-subagent
+pi install ./packages/pi-monitor
 ```
 
 Read the source before you install an extension: it runs with your permissions.

@@ -46,6 +46,8 @@ interface SpecifierMatcher {
 }
 
 export const PATH_TOOLS = new Set(["read", "write", "edit", "ls", "find", "grep"]);
+// pi-monitor's `monitor` tool runs a shell command in `input.command`, so it is judged like bash.
+export const SHELL_TOOLS = new Set(["bash", "monitor"]);
 // These read everything below the given directory.
 const DIRECTORY_TOOLS = new Set(["ls", "find", "grep"]);
 
@@ -55,7 +57,7 @@ function readField(input: unknown, field: string): unknown {
 }
 
 function describeTarget(toolName: string, input: unknown, context: PathContext): Target {
-  if (toolName === "bash") {
+  if (SHELL_TOOLS.has(toolName)) {
     const command = readField(input, "command");
     if (typeof command !== "string") return { units: [], complete: false };
     return analyzeBash(command);
@@ -87,7 +89,7 @@ function findSymlinkTarget(toolName: string, target: Target, context: PathContex
 }
 
 function matcherFor(toolName: string, context: PathContext): SpecifierMatcher {
-  if (toolName === "bash") return { blocks: matchesBashSpecifier, covers: matchesBashSpecifier };
+  if (SHELL_TOOLS.has(toolName)) return { blocks: matchesBashSpecifier, covers: matchesBashSpecifier };
   if (PATH_TOOLS.has(toolName)) {
     const covers = (form: string, specifier: string) => matchesPathSpecifier(form, specifier, context);
     const blocks = DIRECTORY_TOOLS.has(toolName)
@@ -139,7 +141,7 @@ function evaluateRules(request: EvaluateInput): Evaluation {
   const { permissions, input, pathContext } = request;
   const toolName = request.toolName.toLowerCase();
   const rulesFor = (raws: string[]): Rule[] =>
-    raws.map(parseRule).filter((rule) => rule.tool === toolName);
+    raws.map(parseRule).filter((rule) => rule.tool === toolName || (SHELL_TOOLS.has(toolName) && rule.tool === "bash"));
 
   const target = describeTarget(toolName, input, pathContext);
   const matcher = matcherFor(toolName, pathContext);

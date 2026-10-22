@@ -2,7 +2,7 @@ import { decide } from "./decide.ts";
 import { MODES } from "./config/schema.ts";
 import type { DecisionHistory, DecisionRecord } from "./history.ts";
 import type { DecisionLog } from "./log.ts";
-import { PATH_TOOLS } from "./permissions/evaluate.ts";
+import { PATH_TOOLS, SHELL_TOOLS } from "./permissions/evaluate.ts";
 import { createPathContext } from "./permissions/paths.ts";
 import { parseRule } from "./permissions/rule.ts";
 import { isMode, type AutomodeState, type RuleKind } from "./state.ts";
@@ -155,7 +155,7 @@ function parseCheckInput(toolName: string, text: string): InputParse {
       return { failure: "The input starts with { but is not valid JSON" };
     }
   }
-  if (toolName === "bash") return { input: { command: text } };
+  if (SHELL_TOOLS.has(toolName)) return { input: { command: text } };
   if (PATH_TOOLS.has(toolName)) return { input: { path: text } };
   return { failure: `For ${toolName}, write the input as JSON, e.g. {"url":"..."}` };
 }
