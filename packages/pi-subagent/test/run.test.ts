@@ -45,7 +45,14 @@ describe("ChildOutput", () => {
 
 describe("runChild", () => {
   const node = process.execPath;
-  const base = { command: node, cwd: process.cwd(), environment: process.env, signal: undefined };
+  const base = {
+    command: node,
+    cwd: process.cwd(),
+    environment: process.env,
+    signal: undefined,
+    stallTimeoutMs: 60_000,
+    maxStderrChars: 20_000,
+  };
 
   it("returns the final text and the exit code of the child", async () => {
     const script = `console.log(${JSON.stringify(assistant("done"))})`;
@@ -77,5 +84,31 @@ describe("runChild", () => {
     setTimeout(() => controller.abort(), 100);
     const result = await running;
     assert.notEqual(result.exitCode, 0);
+  });
+
+  it("kills a child that prints nothing for the stall timeout", async () => {
+    const result = await runChild({ ...base, args: ["-e", "setInterval(() => {}, 1000)"], stallTimeoutMs: 100 });
+    assert.notEqual(result.exitCode, 0);
+    assert.match(result.stderr, /printed nothing for 100 ms/);
+  });
+
+  it("does not kill a child that keeps printing", async () => {
+    const script = `let n = 0; const timer = setInterval(() => { process.stderr.write("."); if (++n === 8) { clearInterval(timer); console.log(${JSON.stringify(assistant("done"))}); } }, 50)`;
+    const result = await runChild({ ...base, args: ["-e", script], stallTimeoutMs: 200 });
+    assert.equal(result.exitCode, 0);
+    assert.equal(result.text, "done");
+  });
+
+  it("fails a child that exits cleanly after the timeout kill", async () => {
+    const script = `process.on("SIGTERM", () => process.exit(0)); setInterval(() => {}, 1000)`;
+    const result = await runChild({ ...base, args: ["-e", script], stallTimeoutMs: 200 });
+    assert.equal(result.exitCode, 1);
+  });
+
+  it("keeps only the end of a long stderr", async () => {
+    const script = `process.stderr.write("x".repeat(3000) + "END")`;
+    const result = await runChild({ ...base, args: ["-e", script], maxStderrChars: 1000 });
+    assert.equal(result.stderr.length, 1000);
+    assert.ok(result.stderr.endsWith("END"));
   });
 });

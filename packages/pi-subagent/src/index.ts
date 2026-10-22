@@ -1,8 +1,9 @@
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { queryGuard } from "./guard.ts";
+import { configPath, loadSubagentConfig } from "./config.ts";
 import { buildLaunch, CHILD_ENV } from "./launch.ts";
 import { runChild } from "./run.ts";
 
@@ -37,6 +38,13 @@ export default function (pi: ExtensionAPI): void {
     parameters: Parameters,
 
     async execute(_toolCallId, params, signal, _onUpdate, context) {
+      // Read on every call, so an edit applies at once. An invalid file stops the subagent: the user's intent is unclear.
+      const loaded = loadSubagentConfig(configPath(getAgentDir()));
+      if ("errors" in loaded) {
+        throw new Error(`The subagent was not started because its config is invalid:\n${loaded.errors.join("\n")}`);
+      }
+      const { config } = loaded;
+
       const guard = queryGuard(pi.events);
       if (guard.kind === "invalid") {
         throw new Error("pi-automode answered with a status that pi-subagent cannot read. The subagent was not started.");
@@ -48,6 +56,7 @@ export default function (pi: ExtensionAPI): void {
         guard,
         requestedModel: params.model,
         parentModel,
+        defaultModel: config.model,
         tools: params.tools,
         environment: process.env,
       });
@@ -58,6 +67,8 @@ export default function (pi: ExtensionAPI): void {
         cwd: context.cwd,
         environment: launch.environment,
         signal,
+        stallTimeoutMs: config.stallTimeoutMs,
+        maxStderrChars: config.maxStderrChars,
       });
 
       if (result.failure) throw new Error(result.failure);

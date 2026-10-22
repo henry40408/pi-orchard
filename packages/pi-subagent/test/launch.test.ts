@@ -27,6 +27,14 @@ describe("buildLaunch", () => {
     assert.ok(free.args.includes("weak/model"));
   });
 
+  it("uses the configured model when none was asked for, except under automode", () => {
+    const modelAfterFlag = (args: string[]) => args[args.indexOf("--model") + 1];
+    const base = { task: "t", parentModel: "strong/model", defaultModel: "cheap/model", environment: {} };
+    assert.equal(modelAfterFlag(buildLaunch({ ...base, guard: { kind: "none" } }).args), "cheap/model");
+    assert.equal(modelAfterFlag(buildLaunch({ ...base, guard: { kind: "none" }, requestedModel: "asked/model" }).args), "asked/model");
+    assert.equal(modelAfterFlag(buildLaunch({ ...base, guard: { kind: "guarded", entry: "/a", mode: "auto" } }).args), "strong/model");
+  });
+
   it("overwrites a parent mode that was already in the environment", () => {
     const launch = buildLaunch({
       task: "t",

@@ -11,6 +11,8 @@ export interface LaunchRequest {
   requestedModel?: string;
   /** The model of this session. */
   parentModel?: string;
+  /** From the config. Used when the model asked for none; ignored while automode guards the child. */
+  defaultModel?: string;
   tools?: string[];
   environment: Record<string, string | undefined>;
 }
@@ -30,7 +32,7 @@ export function buildLaunch(request: LaunchRequest): Launch {
   const args = ["--mode", "json", "-p", "--no-session"];
   if (request.guard.kind === "guarded") args.push("--no-extensions", "-e", request.guard.entry);
   // Under automode the child's model is also its classifier, so the model may not pick a weaker one.
-  const model = request.guard.kind === "guarded" ? request.parentModel : (request.requestedModel ?? request.parentModel);
+  const model = request.guard.kind === "guarded" ? request.parentModel : (request.requestedModel ?? request.defaultModel ?? request.parentModel);
   if (model) args.push("--model", model);
   if (request.tools && request.tools.length > 0) args.push("--tools", request.tools.join(","));
   // The prefix keeps a task that starts with "-" from being read as an option.

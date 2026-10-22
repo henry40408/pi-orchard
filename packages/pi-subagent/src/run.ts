@@ -6,6 +6,10 @@ export interface RunRequest {
   cwd: string;
   environment: Record<string, string | undefined>;
   signal: AbortSignal | undefined;
+  /** The child is killed after it prints nothing for this long. */
+  stallTimeoutMs: number;
+  /** How much of the end of the child's stderr is kept. */
+  maxStderrChars: number;
 }
 
 export interface RunResult {
@@ -78,6 +82,7 @@ export function runChild(request: RunRequest): Promise<RunResult> {
   return new Promise((resolve) => {
     const output = new ChildOutput();
     let stderr = "";
+    let timedOut = false;
     const child = spawn(request.command, request.args, {
       cwd: request.cwd,
       env: request.environment as NodeJS.ProcessEnv,
@@ -85,23 +90,45 @@ export function runChild(request: RunRequest): Promise<RunResult> {
       stdio: ["ignore", "pipe", "pipe"],
     });
     child.stdout.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => output.push(chunk));
+    child.stdout.on("data", (chunk: string) => {
+      armStallTimer();
+      output.push(chunk);
+    });
     child.stderr.setEncoding("utf8");
-    child.stderr.on("data", (chunk: string) => (stderr += chunk));
+    child.stderr.on("data", (chunk: string) => {
+      armStallTimer();
+      // The end of stderr is kept: that is where the error is.
+      stderr = (stderr + chunk).slice(-request.maxStderrChars);
+    });
 
-    const settle = (exitCode: number, extraStderr = "") => {
-      output.finish();
-      resolve({ text: output.text, exitCode, stderr: stderr + extraStderr, failure: output.failure });
+    let stallTimer: NodeJS.Timeout | undefined;
+    const armStallTimer = () => {
+      clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => {
+        timedOut = true;
+        stderr += `\nThe subagent was killed: it printed nothing for ${request.stallTimeoutMs} ms.`;
+        kill();
+      }, request.stallTimeoutMs);
     };
-    child.on("error", (error) => settle(1, error.message));
-    child.on("close", (code) => settle(code ?? 1));
-
-    const { signal } = request;
-    if (!signal) return;
     const kill = () => {
       child.kill("SIGTERM");
       setTimeout(() => child.kill("SIGKILL"), KILL_GRACE_MS).unref();
     };
+
+    const settle = (exitCode: number, extraStderr = "") => {
+      output.finish();
+      // A child that exits 0 on SIGTERM must still not pass as finished.
+      const finalCode = timedOut && exitCode === 0 ? 1 : exitCode;
+      resolve({ text: output.text, exitCode: finalCode, stderr: stderr + extraStderr, failure: output.failure });
+    };
+    child.on("error", (error) => settle(1, error.message));
+    child.on("close", (code) => settle(code ?? 1));
+
+    armStallTimer();
+    child.on("close", () => clearTimeout(stallTimer));
+
+    const { signal } = request;
+    if (!signal) return;
     if (signal.aborted) kill();
     else signal.addEventListener("abort", kill, { once: true });
   });

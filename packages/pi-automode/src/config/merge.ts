@@ -3,6 +3,10 @@ import type { Config, ConfigFile, Mode } from "./schema.ts";
 // Higher is stricter. rules never calls the classifier, so it is stricter than auto.
 const MODE_STRICTNESS: Record<Mode, number> = { off: 0, auto: 1, rules: 2, ask: 3 };
 
+export function stricterMode(first: Mode, second: Mode): Mode {
+  return MODE_STRICTNESS[first] >= MODE_STRICTNESS[second] ? first : second;
+}
+
 export interface MergeResult {
   config: Config;
   /** Project-layer fields that tried to loosen the user layer or are not allowed there. */
@@ -23,7 +27,7 @@ export function applyProjectConfig(user: Config, project: ConfigFile): MergeResu
   const config: Config = structuredClone(user);
 
   if (project.mode !== undefined) {
-    if (MODE_STRICTNESS[project.mode] >= MODE_STRICTNESS[user.mode]) {
+    if (stricterMode(project.mode, user.mode) === project.mode) {
       config.mode = project.mode;
     } else {
       ignored.push("mode");

@@ -1,5 +1,6 @@
 import { join, resolve } from "node:path";
 import { loadConfig, type LoadedConfig } from "./config/load.ts";
+import { stricterMode } from "./config/merge.ts";
 import { MODES, type Config, type Mode } from "./config/schema.ts";
 import { PATH_TOOLS } from "./permissions/evaluate.ts";
 import { parseRule, RULE_PATTERN } from "./permissions/rule.ts";
@@ -25,13 +26,6 @@ export function isMode(value: string): value is Mode {
 
 /** A parent pi sets this for a child pi; the child's mode is then never looser than the parent's. */
 export const PARENT_MODE_ENV = "PI_AUTOMODE_PARENT_MODE";
-
-// From loosest to strictest. `rules` is stricter than `auto` because it never lets the classifier allow.
-const MODE_STRICTNESS: readonly Mode[] = ["off", "auto", "rules", "ask"];
-
-export function stricterMode(first: Mode, second: Mode): Mode {
-  return MODE_STRICTNESS.indexOf(first) >= MODE_STRICTNESS.indexOf(second) ? first : second;
-}
 
 /** An unset variable means no floor; a value that is not a mode means the strictest floor. */
 export function parentModeFromEnvironment(environment: Record<string, string | undefined>): Mode | undefined {
