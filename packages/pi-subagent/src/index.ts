@@ -23,7 +23,7 @@ function piCommand(): { command: string; prefixArgs: string[] } {
 const Parameters = Type.Object({
   task: Type.String({ description: "What the subagent should do. It sees nothing of this conversation, so say everything it needs." }),
   model: Type.Optional(
-    Type.String({ description: "Model for the subagent, as provider/id. Default: the current model. Ignored while pi-automode is active." }),
+    Type.String({ description: "Model for the subagent, as provider/id. Default: the current model. While pi-automode is active, its classifier still checks the subagent's tool calls." }),
   ),
   tools: Type.Optional(Type.Array(Type.String(), { description: "Allowlist of tool names for the subagent. Default: all." })),
   background: Type.Optional(

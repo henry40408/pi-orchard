@@ -11,7 +11,7 @@ import { createToolCallHandler } from "./hook.ts";
 import { DecisionHistory } from "./history.ts";
 import { DecisionLog, LOG_FILE_ENV, logDirectory, logFileName, pruneOldLogs } from "./log.ts";
 import type { Config } from "./config/schema.ts";
-import { createPiComplete } from "./model.ts";
+import { createPiComplete, withClassifierModelFromEnvironment } from "./model.ts";
 import { AutomodeState, parentModeFromEnvironment } from "./state.ts";
 
 const ENTRY_PATH = fileURLToPath(import.meta.url);
@@ -20,6 +20,9 @@ export default function (pi: ExtensionAPI): void {
   const agentDir = getAgentDir();
   const state = new AutomodeState(agentDir, parentModeFromEnvironment(process.env));
   const history = new DecisionHistory();
+  // Only a child pi takes its classifier model from the environment; a user's own variable must not change a normal session.
+  const isChild = parentModeFromEnvironment(process.env) !== undefined;
+  const classifierFor = (classifier: Config["classifier"]) => (isChild ? withClassifierModelFromEnvironment(classifier, process.env) : classifier);
   // One file per session. A child pi writes to its parent's file instead.
   let log: DecisionLog | undefined;
 
@@ -27,7 +30,9 @@ export default function (pi: ExtensionAPI): void {
   // handler would look like "automode is not installed". Report the strictest mode instead.
   function statusMessage(cwd?: string): StatusMessage {
     try {
-      return { ...state.status(cwd), entry: ENTRY_PATH, logFile: log?.file };
+      const status = state.status(cwd);
+      const { classifier } = state.config(state.cwd());
+      return { ...status, entry: ENTRY_PATH, logFile: log?.file, classifierModel: classifierFor(classifier).model };
     } catch {
       return { mode: "ask", active: true, entry: ENTRY_PATH };
     }
@@ -60,7 +65,7 @@ export default function (pi: ExtensionAPI): void {
       state,
       history,
       currentLog: () => log,
-      completeFor: (context, classifier) => createPiComplete(context, classifier),
+      completeFor: (context, classifier) => createPiComplete(context, classifierFor(classifier)),
     }),
   );
 

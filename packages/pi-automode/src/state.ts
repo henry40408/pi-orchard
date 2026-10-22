@@ -191,6 +191,11 @@ export class AutomodeState {
     return undefined;
   }
 
+  /** The directory used last; before any, the process directory. */
+  cwd(): string {
+    return this.#cwd ?? process.cwd();
+  }
+
   /** Without a directory, the one used last; before any, the process directory. */
   status(cwd: string = this.#cwd ?? process.cwd()): AutomodeStatus {
     const { mode } = this.config(cwd);

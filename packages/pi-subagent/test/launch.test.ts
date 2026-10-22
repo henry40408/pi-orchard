@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { PARENT_MODE_ENV } from "../src/guard.ts";
+import { CLASSIFIER_MODEL_ENV, PARENT_MODE_ENV } from "../src/guard.ts";
 import { buildLaunch, CHILD_ENV } from "../src/launch.ts";
 
 describe("buildLaunch", () => {
@@ -14,17 +14,37 @@ describe("buildLaunch", () => {
     assert.deepEqual(launch.environment, { HOME: "/h", [PARENT_MODE_ENV]: "rules", [CHILD_ENV]: "1" });
   });
 
-  it("ignores the requested model under automode, and honours it without", () => {
+  it("works on the requested model with or without automode", () => {
+    for (const guard of [{ kind: "none" }, { kind: "guarded", entry: "/a", mode: "auto" }] as const) {
+      const launch = buildLaunch({ task: "t", guard, requestedModel: "cheap/model", parentModel: "strong/model", environment: {} });
+      assert.deepEqual(launch.args.slice(launch.args.indexOf("--model"), launch.args.indexOf("--model") + 2), ["--model", "cheap/model"]);
+    }
+  });
+
+  it("has a guarded child checked by the classifier model of the config, else by the parent's model", () => {
+    const base = { task: "t", requestedModel: "cheap/model", parentModel: "strong/model", environment: {} };
+    const configured = buildLaunch({ ...base, guard: { kind: "guarded", entry: "/a", mode: "auto", classifierModel: "judge/model" } });
+    assert.equal(configured.environment[CLASSIFIER_MODEL_ENV], "judge/model");
+    const fallback = buildLaunch({ ...base, guard: { kind: "guarded", entry: "/a", mode: "auto" } });
+    assert.equal(fallback.environment[CLASSIFIER_MODEL_ENV], "strong/model");
+  });
+
+  it("does not let a guarded child pick a model when nothing is known to check it", () => {
+    const launch = buildLaunch({ task: "t", guard: { kind: "guarded", entry: "/a", mode: "auto" }, requestedModel: "cheap/model", defaultModel: "cheap/model", environment: {} });
+    assert.ok(!launch.args.includes("--model"));
+    assert.equal(launch.environment[CLASSIFIER_MODEL_ENV], undefined);
+  });
+
+  it("overwrites a classifier model that was already in the environment, and sets none without automode", () => {
     const guarded = buildLaunch({
       task: "t",
       guard: { kind: "guarded", entry: "/a", mode: "auto" },
-      requestedModel: "weak/model",
       parentModel: "strong/model",
-      environment: {},
+      environment: { [CLASSIFIER_MODEL_ENV]: "weak/model" },
     });
-    assert.deepEqual(guarded.args.slice(guarded.args.indexOf("--model"), guarded.args.indexOf("--model") + 2), ["--model", "strong/model"]);
-    const free = buildLaunch({ task: "t", guard: { kind: "none" }, requestedModel: "weak/model", parentModel: "strong/model", environment: {} });
-    assert.ok(free.args.includes("weak/model"));
+    assert.equal(guarded.environment[CLASSIFIER_MODEL_ENV], "strong/model");
+    const free = buildLaunch({ task: "t", guard: { kind: "none" }, parentModel: "strong/model", environment: {} });
+    assert.equal(free.environment[CLASSIFIER_MODEL_ENV], undefined);
   });
 
   it("gives a guarded child the log file of the parent, and an unguarded one nothing", () => {
@@ -34,12 +54,12 @@ describe("buildLaunch", () => {
     assert.equal(free.environment.PI_AUTOMODE_LOG_FILE, undefined);
   });
 
-  it("uses the configured model when none was asked for, except under automode", () => {
+  it("uses the configured model when none was asked for", () => {
     const modelAfterFlag = (args: string[]) => args[args.indexOf("--model") + 1];
     const base = { task: "t", parentModel: "strong/model", defaultModel: "cheap/model", environment: {} };
     assert.equal(modelAfterFlag(buildLaunch({ ...base, guard: { kind: "none" } }).args), "cheap/model");
     assert.equal(modelAfterFlag(buildLaunch({ ...base, guard: { kind: "none" }, requestedModel: "asked/model" }).args), "asked/model");
-    assert.equal(modelAfterFlag(buildLaunch({ ...base, guard: { kind: "guarded", entry: "/a", mode: "auto" } }).args), "strong/model");
+    assert.equal(modelAfterFlag(buildLaunch({ ...base, guard: { kind: "guarded", entry: "/a", mode: "auto" } }).args), "cheap/model");
   });
 
   it("overwrites a parent mode that was already in the environment", () => {

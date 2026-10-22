@@ -29,6 +29,11 @@ describe("queryGuard", () => {
     assert.deepEqual(queryGuard(bus), { kind: "guarded", entry: "/a/index.ts", mode: "auto", logFile: "/l/a.jsonl" });
   });
 
+  it("passes on the classifier model when the answer has one", () => {
+    const bus = busWithAutomode(() => [{ mode: "auto", active: true, entry: "/a/index.ts", classifierModel: "judge/model" }]);
+    assert.deepEqual(queryGuard(bus), { kind: "guarded", entry: "/a/index.ts", mode: "auto", classifierModel: "judge/model" });
+  });
+
   it("returns the mode and entry of a good answer", () => {
     const bus = busWithAutomode(() => [{ mode: "rules", active: true, entry: "/a/index.ts" }]);
     assert.deepEqual(queryGuard(bus), { kind: "guarded", entry: "/a/index.ts", mode: "rules" });

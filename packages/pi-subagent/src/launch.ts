@@ -1,4 +1,4 @@
-import { LOG_FILE_ENV, PARENT_MODE_ENV, type GuardPlan } from "./guard.ts";
+import { CLASSIFIER_MODEL_ENV, LOG_FILE_ENV, PARENT_MODE_ENV, type GuardPlan } from "./guard.ts";
 
 /** Set in every child, so that a child does not offer the `subagent` tool and cannot start children. */
 export const CHILD_ENV = "PI_SUBAGENT_CHILD";
@@ -7,11 +7,11 @@ export interface LaunchRequest {
   task: string;
   /** The result of the automode handshake. It must not be `invalid`. */
   guard: Exclude<GuardPlan, { kind: "invalid" }>;
-  /** The model the model asked for. Ignored while automode guards the child. */
+  /** The model the model asked for. */
   requestedModel?: string;
-  /** The model of this session. */
+  /** The model of this session. It also checks a guarded child, unless the config names a classifier model. */
   parentModel?: string;
-  /** From the config. Used when the model asked for none; ignored while automode guards the child. */
+  /** From the config. Used when the model asked for none. */
   defaultModel?: string;
   tools?: string[];
   environment: Record<string, string | undefined>;
@@ -31,8 +31,10 @@ export interface Launch {
 export function buildLaunch(request: LaunchRequest): Launch {
   const args = ["--mode", "json", "-p", "--no-session"];
   if (request.guard.kind === "guarded") args.push("--no-extensions", "-e", request.guard.entry);
-  // Under automode the child's model is also its classifier, so the model may not pick a weaker one.
-  const model = request.guard.kind === "guarded" ? request.parentModel : (request.requestedModel ?? request.defaultModel ?? request.parentModel);
+  // A guarded child on a cheap model needs a known model to check it; without one it would check itself.
+  const classifierModel = request.guard.kind === "guarded" ? (request.guard.classifierModel ?? request.parentModel) : undefined;
+  const mayChooseModel = request.guard.kind !== "guarded" || classifierModel !== undefined;
+  const model = mayChooseModel ? (request.requestedModel ?? request.defaultModel ?? request.parentModel) : request.parentModel;
   if (model) args.push("--model", model);
   if (request.tools && request.tools.length > 0) args.push("--tools", request.tools.join(","));
   // The prefix keeps a task that starts with "-" from being read as an option.
@@ -42,6 +44,8 @@ export function buildLaunch(request: LaunchRequest): Launch {
   if (request.guard.kind === "guarded") {
     environment[PARENT_MODE_ENV] = request.guard.mode;
     if (request.guard.logFile) environment[LOG_FILE_ENV] = request.guard.logFile;
+    // The child may work on any model, but its tool calls are checked by the model that checks the parent's.
+    if (classifierModel) environment[CLASSIFIER_MODEL_ENV] = classifierModel;
   }
   return { args, environment };
 }

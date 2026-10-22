@@ -4,6 +4,20 @@ import type { Config } from "./config/schema.ts";
 
 type ModelContext = Pick<ExtensionContext, "model" | "modelRegistry">;
 
+/**
+ * The classifier model of a child pi. pi-subagent sets it, so a child that works on a cheap model
+ * is still checked by the model of its parent. It beats the config files. Defined by pi-automode.
+ */
+export const CLASSIFIER_MODEL_ENV = "PI_AUTOMODE_CLASSIFIER_MODEL";
+
+export function withClassifierModelFromEnvironment(
+  classifier: Config["classifier"],
+  environment: Record<string, string | undefined>,
+): Config["classifier"] {
+  const model = environment[CLASSIFIER_MODEL_ENV];
+  return model ? { ...classifier, model } : classifier;
+}
+
 // "provider/model-id": the id may itself contain slashes, so only the first one splits.
 function findConfiguredModel(registry: ModelContext["modelRegistry"], setting: string) {
   const slash = setting.indexOf("/");
