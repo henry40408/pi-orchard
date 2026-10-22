@@ -3,6 +3,7 @@ import { MODES } from "./config/schema.ts";
 import type { DecisionHistory, DecisionRecord } from "./history.ts";
 import { PATH_TOOLS } from "./permissions/evaluate.ts";
 import { createPathContext } from "./permissions/paths.ts";
+import { parseRule } from "./permissions/rule.ts";
 import { isMode, type AutomodeState, type RuleKind } from "./state.ts";
 
 export interface CommandResult {
@@ -137,13 +138,18 @@ async function checkCall({ state, cwd }: CommandRequest, argumentText: string): 
   const parsed = parseCheckInput(toolName, inputText);
   if ("failure" in parsed) return error(parsed.failure);
 
+  let classifierWouldJudge = false;
   const outcome = await decide({
     config: state.config(cwd),
     toolName,
     input: parsed.input,
     pathContext: createPathContext(cwd),
-    classifyAction: async () => ({ decision: "ask", reason: "The classifier would judge this call (check does not run it)" }),
+    classifyAction: async () => {
+      classifierWouldJudge = true;
+      return { decision: "ask", reason: "" };
+    },
   });
+  if (classifierWouldJudge) return info("undecided: no rule decides this call, so the classifier would judge it (check does not run the classifier)");
   return info(`${outcome.action} (${outcome.source}): ${outcome.reason}`);
 }
 
@@ -151,6 +157,10 @@ function addRule({ state, cwd }: CommandRequest, kind: RuleKind, rule: string): 
   if (rule === "") return error(`Usage: /automode ${kind} <rule>`);
   const refusal = state.addRule(cwd, kind, rule);
   if (refusal) return error(refusal);
+  const { tool, specifier } = parseRule(rule);
+  if (specifier === undefined) {
+    return { message: `Added the ${kind} rule ${rule} for this session. It has no specifier, so it covers every ${tool} call`, type: "warning" };
+  }
   return info(`Added the ${kind} rule ${rule} for this session`);
 }
 

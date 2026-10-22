@@ -1,7 +1,8 @@
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { loadConfig, type LoadedConfig } from "./config/load.ts";
 import { MODES, type Config, type Mode } from "./config/schema.ts";
-import { RULE_PATTERN } from "./permissions/rule.ts";
+import { PATH_TOOLS } from "./permissions/evaluate.ts";
+import { parseRule, RULE_PATTERN } from "./permissions/rule.ts";
 
 export interface AutomodeStatus {
   mode: Mode;
@@ -45,6 +46,19 @@ export type PermissionRules = Record<RuleKind, string[]>;
 
 const RULE_REGEXP = new RegExp(RULE_PATTERN);
 const MODEL_REGEXP = /^[^/\s]+\/\S+$/;
+
+/**
+ * A relative path specifier is anchored to the directory where the rule was
+ * added; otherwise a change of directory would move the rule to other files.
+ */
+function anchorPathSpecifier(rule: string, cwd: string): string {
+  const { tool, specifier } = parseRule(rule);
+  if (specifier === undefined || !PATH_TOOLS.has(tool)) return rule;
+  if (specifier === "~" || specifier.startsWith("~/")) return rule;
+  // The matcher reads glob characters in an absolute specifier as wildcards, but takes the working directory literally.
+  if (/[*?[]/.test(cwd)) return rule;
+  return `${rule.slice(0, rule.indexOf("("))}(${resolve(cwd, specifier)})`;
+}
 
 /**
  * The config of the running session. It is read again for a new working
@@ -132,7 +146,8 @@ export class AutomodeState {
     const refusal = this.#refusalForInvalidConfig(cwd);
     if (refusal) return refusal;
     if (!RULE_REGEXP.test(rule)) return `"${rule}" is not a permission rule. Write it as tool or tool(specifier), e.g. bash(git push:*)`;
-    if (!this.#sessionRules[kind].includes(rule)) this.#sessionRules[kind].push(rule);
+    const anchored = anchorPathSpecifier(rule, cwd);
+    if (!this.#sessionRules[kind].includes(anchored)) this.#sessionRules[kind].push(anchored);
     return undefined;
   }
 

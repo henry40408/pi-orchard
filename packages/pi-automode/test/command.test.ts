@@ -133,7 +133,7 @@ describe("/automode check", () => {
   it("does not run the classifier", async () => {
     const { run } = setup();
     const result = await run("check bash make");
-    assert.match(result.message, /^ask \(classifier\): .*check does not run it/);
+    assert.match(result.message, /^undecided: .*classifier would judge it/);
   });
 
   it("reports a problem with the input", async () => {
@@ -159,6 +159,13 @@ describe("/automode allow, ask, deny and rules", () => {
     assert.equal((await run("allow bash(make:*)")).type, "info");
     assert.deepEqual(state.config(cwd).permissions.allow, ["read", "bash(make:*)"]);
     assert.equal((await run("rules")).message, "allow: read\nallow: bash(make:*) (session)");
+  });
+
+  it("warns about a rule without a specifier", async () => {
+    const { run } = setup();
+    const result = await run("allow bash");
+    assert.equal(result.type, "warning");
+    assert.match(result.message, /no specifier.*every bash call/);
   });
 
   it("lists deny first, then ask, then allow", async () => {

@@ -16,10 +16,24 @@ function setup(userConfig?: string) {
 }
 
 describe("AutomodeState", () => {
+  it("anchors a relative path rule to the directory where it was added", () => {
+    const { state, cwd } = setup();
+    state.addRule(cwd, "deny", "read(./secret/**)");
+    state.addRule(cwd, "deny", "read(~/notes)");
+    state.addRule(cwd, "deny", "bash(rm:*)");
+    assert.deepEqual(state.config(cwd).permissions.deny, [`read(${cwd}/secret/**)`, "read(~/notes)", "bash(rm:*)"]);
+  });
+
   it("uses the default mode without files", () => {
     const { state, cwd } = setup();
     assert.equal(state.config(cwd).mode, "auto");
     assert.deepEqual(state.status(cwd), { mode: "auto", active: true });
+  });
+
+  it("keeps a relative path rule as written when the directory has glob characters", () => {
+    const { state } = setup();
+    state.addRule("/work/a?b", "allow", "read(src)");
+    assert.deepEqual(state.config("/work/a?b").permissions.allow, ["read(src)"]);
   });
 
   it("reads the user file", () => {

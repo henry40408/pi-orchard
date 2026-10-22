@@ -37,28 +37,33 @@ describe("decide", () => {
   it("allows everything in off mode without evaluating rules", async () => {
     const { outcome, classified } = await run(config({ mode: "off" }, { deny: ["Bash(rm:*)"] }), "bash", { command: "rm x" });
     assert.equal(outcome.action, "allow");
+    assert.equal(outcome.source, "off");
     assert.equal(classified, 0);
   });
 
   it("blocks on a deny rule even in ask mode", async () => {
     const { outcome } = await run(config({ mode: "ask" }, { deny: ["Bash(rm:*)"] }), "bash", { command: "rm x" });
     assert.equal(outcome.action, "block");
+    assert.equal(outcome.source, "deny");
   });
 
   it("asks in ask mode even with an allow rule", async () => {
     const { outcome } = await run(config({ mode: "ask" }, { allow: ["Bash(ls:*)"] }), "bash", { command: "ls" });
     assert.equal(outcome.action, "ask");
+    assert.equal(outcome.source, "mode");
   });
 
   it("asks on an ask rule and does not call the classifier", async () => {
     const { outcome, classified } = await run(config({}, { ask: ["Bash(git push:*)"] }), "bash", { command: "git push" });
     assert.equal(outcome.action, "ask");
+    assert.equal(outcome.source, "rule");
     assert.equal(classified, 0);
   });
 
   it("allows on an allow rule without the classifier", async () => {
     const { outcome, classified } = await run(config({}, { allow: ["Bash(ls:*)"] }), "bash", { command: "ls" });
     assert.equal(outcome.action, "allow");
+    assert.equal(outcome.source, "rule");
     assert.equal(classified, 0);
   });
 
@@ -70,6 +75,7 @@ describe("decide", () => {
   it("allows a file inside the working directory when the shortcut is on", async () => {
     const { outcome, classified } = await run(config({ allowInsideWorkingDirectory: true }), "read", { path: "package.json" });
     assert.equal(outcome.action, "allow");
+    assert.equal(outcome.source, "shortcut");
     assert.equal(classified, 0);
   });
 
@@ -93,6 +99,7 @@ describe("decide", () => {
   it("asks in rules mode when no rule decides", async () => {
     const { outcome, classified } = await run(config({ mode: "rules" }), "bash", { command: "make" });
     assert.equal(outcome.action, "ask");
+    assert.equal(outcome.source, "mode");
     assert.equal(classified, 0);
   });
 
@@ -101,6 +108,7 @@ describe("decide", () => {
     disabled.classifier = { ...disabled.classifier, enabled: false };
     const { outcome, classified } = await run(disabled, "bash", { command: "make" });
     assert.equal(outcome.action, "ask");
+    assert.equal(outcome.source, "mode");
     assert.equal(classified, 0);
   });
 
@@ -110,5 +118,6 @@ describe("decide", () => {
     const deny = await run(config(), "bash", { command: "make" }, { decision: "deny", reason: "no" });
     assert.deepEqual([allow.outcome.action, ask.outcome.action, deny.outcome.action], ["allow", "ask", "block"]);
     assert.equal(deny.outcome.reason, "no");
+    assert.equal(allow.outcome.source, "classifier");
   });
 });
