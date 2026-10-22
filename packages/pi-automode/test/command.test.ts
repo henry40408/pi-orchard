@@ -3,7 +3,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { completeArguments, MENU_ITEMS, runCommand } from "../src/command.ts";
+import { CLASSIFIER_SWITCH, completeArguments, MENU_ITEMS, runCommand } from "../src/command.ts";
+import { MODES } from "../src/config/schema.ts";
 import { announceStatus, answerQueries, QUERY_CHANNEL, STATUS_CHANNEL, type StatusMessage } from "../src/handshake.ts";
 import { DecisionHistory } from "../src/history.ts";
 import { DecisionLog } from "../src/log.ts";
@@ -313,6 +314,12 @@ describe("completions and menu", () => {
     for (const item of MENU_ITEMS) {
       assert.notEqual((await run(item.args)).type, "error", item.label);
     }
+  });
+
+  it("builds toggle rows whose every value is a valid command", async () => {
+    const { run } = setup();
+    for (const mode of MODES) assert.notEqual((await run(`mode ${mode}`)).type, "error", mode);
+    for (const option of CLASSIFIER_SWITCH) assert.notEqual((await run(`classifier ${option}`)).type, "error", option);
   });
 });
 

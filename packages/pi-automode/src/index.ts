@@ -1,7 +1,10 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { completeArguments, MENU_ITEMS, runCommand } from "./command.ts";
+import { CLASSIFIER_SWITCH, completeArguments, MENU_ITEMS, runCommand } from "./command.ts";
+import { MODES } from "./config/schema.ts";
+import { showMenu } from "./menu.ts";
+import { toggleRow, type MenuRow } from "./menu-model.ts";
 import { FOOTER_KEY, footerText } from "./footer.ts";
 import { answerQueries, announceStatus, type StatusMessage } from "./handshake.ts";
 import { createToolCallHandler } from "./hook.ts";
@@ -61,26 +64,31 @@ export default function (pi: ExtensionAPI): void {
     }),
   );
 
-  // Without arguments, a person picks from a menu; with no UI the command shows the status.
-  // `undefined` means the person closed the menu.
-  async function argumentsFromMenu(context: Pick<ExtensionContext, "hasUI" | "ui">): Promise<string | undefined> {
-    if (!context.hasUI) return "";
-    const choice = await context.ui.select(
-      "automode",
-      MENU_ITEMS.map((item) => item.label),
-    );
-    return MENU_ITEMS.find((item) => item.label === choice)?.args;
+  // Without arguments, a person uses a menu; with no UI the command shows the status.
+  // An empty list means the person closed the menu.
+  async function commandsFromMenu(context: Pick<ExtensionContext, "mode" | "ui" | "cwd">): Promise<string[]> {
+    // Only the terminal can draw a custom component. RPC mode has a UI that cannot.
+    if (context.mode !== "tui") return ["status"];
+    const { mode } = state.status(context.cwd);
+    const { classifier } = state.config(context.cwd);
+    const rows: MenuRow[] = [
+      toggleRow("mode", MODES, mode),
+      toggleRow("classifier", CLASSIFIER_SWITCH, classifier.enabled ? "on" : "off"),
+      ...MENU_ITEMS.map((item): MenuRow => ({ kind: "action", ...item })),
+    ];
+    return (await showMenu(context.ui, rows)) ?? [];
   }
 
   pi.registerCommand("automode", {
     description: "Show or change automode: status, mode, why, check, allow, ask, deny, rules, classifier, reload",
     getArgumentCompletions: completeArguments,
     handler: async (args, context) => {
-      const chosen = args.trim() === "" ? await argumentsFromMenu(context) : args;
-      if (chosen === undefined) return;
-      const result = await runCommand({ args: chosen, cwd: context.cwd, state, history, log });
-      context.ui.notify(result.message, result.type);
-      publishStatus(context);
+      const commands = args.trim() === "" ? await commandsFromMenu(context) : [args];
+      for (const command of commands) {
+        const result = await runCommand({ args: command, cwd: context.cwd, state, history, log });
+        context.ui.notify(result.message, result.type);
+      }
+      if (commands.length > 0) publishStatus(context);
     },
   });
 

@@ -65,16 +65,15 @@ export function completeArguments(argumentText: string): Completion[] {
   return options.filter((option) => option.startsWith(typed)).map((option) => ({ value: `${first} ${option}`, label: option }));
 }
 
-/** What the menu of a bare `/automode` offers: each label runs the arguments next to it. */
+/** The actions of the menu of a bare `/automode`: each label runs the arguments next to it. The mode and the classifier are toggle rows. */
 export const MENU_ITEMS: ReadonlyArray<{ label: string; args: string }> = [
   { label: "status", args: "status" },
   { label: "why: recent decisions", args: "why" },
   { label: "rules: rules in effect", args: "rules" },
-  ...MODES.map((mode) => ({ label: `mode ${mode}`, args: `mode ${mode}` })),
-  { label: "classifier on", args: "classifier on" },
-  { label: "classifier off", args: "classifier off" },
   { label: "reload", args: "reload" },
 ];
+
+export const CLASSIFIER_SWITCH = ["on", "off"] as const;
 
 function error(message: string): CommandResult {
   return { message, type: "error" };
