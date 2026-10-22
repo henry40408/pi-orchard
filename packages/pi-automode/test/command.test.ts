@@ -128,6 +128,19 @@ describe("/automode why", () => {
       const log = new DecisionLog(join(cwd, "a.jsonl"));
       const result = await runCommand({ args: "why", cwd, state, history, log, loggedDecisions: () => [...logged] });
       assert.match(result.message, /memory/);
+      assert.match(result.message, /log is off.*none made by subagents.*"enabled":true/);
+    });
+
+    it("says so when the log is off and nothing was decided", async () => {
+      const { run } = setup();
+      assert.match((await run("why")).message, /No tool call[\s\S]*log is off/);
+    });
+
+    it("does not warn when it reads the log", async () => {
+      const { state, history, cwd } = setup('{"log":{"enabled":true}}');
+      const log = new DecisionLog(join(cwd, "a.jsonl"));
+      const result = await runCommand({ args: "why", cwd, state, history, log, loggedDecisions: () => [...logged] });
+      assert.doesNotMatch(result.message, /Because/);
     });
 
     it("reads the memory when the log cannot be written", async () => {
@@ -137,6 +150,7 @@ describe("/automode why", () => {
       log.failure = "disk full";
       const result = await runCommand({ args: "why", cwd, state, history, log, loggedDecisions: () => [...logged] });
       assert.match(result.message, /memory/);
+      assert.match(result.message, /log cannot be used/);
     });
   });
 

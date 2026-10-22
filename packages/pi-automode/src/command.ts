@@ -113,18 +113,28 @@ function describeRecord(record: DecisionRecord): string {
   return `${time}${who} ${record.toolName} ${record.summary}\n  -> ${action} (${source}${answer}): ${reason}`;
 }
 
+interface RecentDecisions {
+  records: DecisionRecord[];
+  /** Set when the records come from memory, which has no earlier starts and no subagents. */
+  limit?: string;
+}
+
 // The log has the decisions of earlier starts and of subagents. Memory is used when the log is off or cannot be written.
-function recentDecisions({ state, cwd, history, log, loggedDecisions }: CommandRequest, count: number): DecisionRecord[] {
-  const logUsable = loggedDecisions && log && !log.failure && state.config(cwd).log.enabled;
-  return logUsable ? loggedDecisions(count) : history.recent(count);
+function recentDecisions({ state, cwd, history, log, loggedDecisions }: CommandRequest, count: number): RecentDecisions {
+  if (loggedDecisions && log && !log.failure && state.config(cwd).log.enabled) return { records: loggedDecisions(count) };
+  const reason = state.config(cwd).log.enabled ? "the log cannot be used" : "the log is off";
+  return {
+    records: history.recent(count),
+    limit: `Because ${reason}, this list has only the decisions of this run, and none made by subagents. To see all of them, set {"log":{"enabled":true}} in automode.json.`,
+  };
 }
 
 function showHistory(request: CommandRequest, countText: string): CommandResult {
   const count = countText === "" ? DEFAULT_WHY_COUNT : Number(countText);
   if (!Number.isInteger(count) || count < 1) return error(`"${countText}" is not a count. Use a positive number`);
-  const records = recentDecisions(request, count);
-  if (records.length === 0) return info("No tool call has been decided in this session yet");
-  return info(records.map(describeRecord).join("\n"));
+  const { records, limit } = recentDecisions(request, count);
+  const lines = records.length === 0 ? ["No tool call has been decided in this session yet"] : records.map(describeRecord);
+  return info(limit ? [...lines, limit].join("\n") : lines.join("\n"));
 }
 
 type InputParse = { input: unknown } | { failure: string };
