@@ -118,6 +118,31 @@ describe("BackgroundRegistry", () => {
     assert.deepEqual(registry.list().map((task) => task.id), [running.task.id, "bg-3", "bg-4"]);
   });
 
+  it("reports the running count when a task starts, ends, is cancelled, or all are cancelled", async () => {
+    const counts: number[] = [];
+    const registry = new BackgroundRegistry({ maxRunning: 4, onChange: (count) => counts.push(count) });
+    const first = started(registry);
+    const second = started(registry);
+    const third = started(registry);
+    first.child.finish({ text: "" });
+    await settle();
+    registry.cancel(second.task.id);
+    registry.cancelAll();
+    assert.deepEqual(counts, [1, 2, 3, 2, 1, 0]);
+    assert.equal(third.child.signal().aborted, true);
+  });
+
+  it("survives an onChange that throws", () => {
+    const registry = new BackgroundRegistry({
+      maxRunning: 4,
+      onChange: () => {
+        throw new Error("no ui");
+      },
+    });
+    started(registry);
+    assert.equal(registry.list()[0]?.status, "running");
+  });
+
   it("survives an onFinish that throws", async () => {
     const registry = new BackgroundRegistry({ maxRunning: 4 });
     const child = manualChild();

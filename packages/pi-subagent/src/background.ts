@@ -41,7 +41,16 @@ export class BackgroundRegistry {
   #entries: Entry[] = [];
   #counter = 0;
 
-  constructor(options: { maxRunning: number; keptFinished?: number; now?: () => number }) {
+  #onChange: (runningCount: number) => void;
+
+  constructor(options: {
+    maxRunning: number;
+    keptFinished?: number;
+    now?: () => number;
+    /** Called after the number of running tasks may have changed. */
+    onChange?: (runningCount: number) => void;
+  }) {
+    this.#onChange = options.onChange ?? (() => {});
     this.#maxRunning = options.maxRunning;
     this.#keptFinished = options.keptFinished ?? DEFAULT_KEPT_FINISHED;
     this.#now = options.now ?? Date.now;
@@ -53,7 +62,7 @@ export class BackgroundRegistry {
   }
 
   start(request: StartRequest): StartResult {
-    const running = this.#entries.filter((entry) => entry.task.status === "running").length;
+    const running = this.#runningCount();
     if (running >= this.#maxRunning) {
       return { refusal: `${running} background subagents are already running (the limit is ${this.#maxRunning}). Wait for one to finish, or cancel one.` };
     }
@@ -66,7 +75,20 @@ export class BackgroundRegistry {
     this.#entries.push(entry);
 
     void this.#watch(entry, request);
+    this.#notifyChange();
     return { task: { ...task } };
+  }
+
+  #runningCount(): number {
+    return this.#entries.filter((entry) => entry.task.status === "running").length;
+  }
+
+  #notifyChange(): void {
+    try {
+      this.#onChange(this.#runningCount());
+    } catch {
+      // A footer that cannot be drawn must not stop a subagent.
+    }
   }
 
   async #watch(entry: Entry, request: StartRequest): Promise<void> {
@@ -81,6 +103,7 @@ export class BackgroundRegistry {
     entry.task.status = outcome.error === undefined ? "done" : "failed";
     entry.task.finishedAt = this.#now();
     this.#dropOldFinished();
+    this.#notifyChange();
     try {
       request.onFinish({ ...entry.task }, outcome);
     } catch {
@@ -107,6 +130,7 @@ export class BackgroundRegistry {
     if (!entry) return `There is no background subagent ${id}.`;
     if (entry.task.status !== "running") return `${id} is not running (${entry.task.status}).`;
     this.#stop(entry);
+    this.#notifyChange();
     return undefined;
   }
 
@@ -115,6 +139,7 @@ export class BackgroundRegistry {
     for (const entry of this.#entries) {
       if (entry.task.status === "running") this.#stop(entry);
     }
+    this.#notifyChange();
   }
 
   #stop(entry: Entry): void {

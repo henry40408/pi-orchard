@@ -3,6 +3,7 @@ import { basename } from "node:path";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
 import { BackgroundRegistry, type BackgroundOutcome, type BackgroundTask } from "./background.ts";
+import { FOOTER_KEY, footerText } from "./footer.ts";
 import { queryGuard } from "./guard.ts";
 import { configPath, DEFAULT_CONFIG, loadSubagentConfig, type SubagentConfig } from "./config.ts";
 import { buildLaunch, CHILD_ENV } from "./launch.ts";
@@ -60,7 +61,17 @@ function describeList(tasks: BackgroundTask[]): string {
 export default function (pi: ExtensionAPI): void {
   if (process.env[CHILD_ENV]) return;
 
-  const background = new BackgroundRegistry({ maxRunning: DEFAULT_CONFIG.maxBackground });
+  // The registry reports from callbacks that have no context, so the ui of the last background start is kept here.
+  let footerUi: ExtensionContext["ui"] | undefined;
+  const background = new BackgroundRegistry({
+    maxRunning: DEFAULT_CONFIG.maxBackground,
+    onChange: (runningCount) => footerUi?.setStatus(FOOTER_KEY, footerText(runningCount)),
+  });
+
+  function cancelAllAndClearFooter(): void {
+    background.cancelAll();
+    footerUi = undefined;
+  }
 
   // Read on every call, so an edit applies at once. An invalid file stops the subagent: the user's intent is unclear.
   function prepareChild(params: Static<typeof Parameters>, context: ExtensionContext): ChildSettings {
@@ -106,6 +117,7 @@ export default function (pi: ExtensionAPI): void {
     if (!context.hasUI) throw new Error("A background subagent needs an interactive session. Run it without background.");
     const settings = prepareChild(params, context);
     background.setMaxRunning(settings.config.maxBackground);
+    footerUi = context.ui;
     const started = background.start({
       task: params.task,
       run: async (signal) => outcomeOf(await runPrepared(settings, context.cwd, signal)),
@@ -162,7 +174,7 @@ export default function (pi: ExtensionAPI): void {
 
   // After the session ends no result can be delivered, so a child that goes on would only waste work.
   // pi aborts the old session before it emits session_shutdown. A result that arrives in between would start a turn in a dying session.
-  pi.on("session_shutdown", () => background.cancelAll());
-  pi.on("session_before_switch", () => background.cancelAll());
-  pi.on("session_before_fork", () => background.cancelAll());
+  pi.on("session_shutdown", cancelAllAndClearFooter);
+  pi.on("session_before_switch", cancelAllAndClearFooter);
+  pi.on("session_before_fork", cancelAllAndClearFooter);
 }
