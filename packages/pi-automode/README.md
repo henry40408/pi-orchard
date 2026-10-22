@@ -70,6 +70,8 @@ Rules added with `/automode allow|ask|deny` last until `reload` or the end of th
 
 `allowInsideWorkingDirectory` lets path tools run without a question inside the project, except under `.git`, `.pi`, `.vscode` and `.envrc`. Only the user file can turn it on.
 
+- **`monitor`**: the tool of [`pi-monitor`](../pi-monitor) is judged like `bash`. Its `command` goes through the same analysis, `bash(...)` rules apply to it, and a rule named `monitor` covers the tool as a whole. The rule `bash` without a specifier covers `monitor` too; a rule `monitor` does not cover `bash`.
+
 > **Known gap:** the `powershell` tool is not covered by rules; it only reaches the classifier or you.
 
 ### Classifier
