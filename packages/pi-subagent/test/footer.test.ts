@@ -3,14 +3,16 @@ import { describe, it } from "node:test";
 import { footerText } from "../src/footer.ts";
 
 describe("footerText", () => {
-  it("clears the entry when nothing runs", () => {
-    assert.equal(footerText(0), undefined);
+  it("says idle when nothing runs", () => {
+    assert.equal(footerText(0), "🤖 idle");
   });
 
   it("starts with an emoji and has neither a key prefix nor trailing parentheses", () => {
-    const text = footerText(2) ?? "";
-    assert.equal(text, "🤖 2 running");
-    assert.doesNotMatch(text, /subagent\s*:/i);
-    assert.doesNotMatch(text, /\)\s*$/);
+    for (const text of [footerText(0), footerText(2)]) {
+      assert.match(text, /^🤖 /u);
+      assert.doesNotMatch(text, /subagent\s*:/i);
+      assert.doesNotMatch(text, /\)\s*$/);
+    }
+    assert.equal(footerText(2), "🤖 2 running");
   });
 });

@@ -61,15 +61,46 @@ function describeList(tasks: BackgroundTask[]): string {
 export default function (pi: ExtensionAPI): void {
   if (process.env[CHILD_ENV]) return;
 
-  // The registry reports from callbacks that have no context, so the ui of the last background start is kept here.
+  // The registry reports from callbacks that have no context, so the ui of the session is kept here.
   let footerUi: ExtensionContext["ui"] | undefined;
+  let backgroundRunning = 0;
+  let foregroundRunning = 0;
+
+  function refreshFooter(): void {
+    try {
+      footerUi?.setStatus(FOOTER_KEY, footerText(backgroundRunning + foregroundRunning));
+    } catch {
+      // A footer that cannot be drawn must not stop a subagent.
+    }
+  }
+
   const background = new BackgroundRegistry({
     maxRunning: DEFAULT_CONFIG.maxBackground,
-    onChange: (runningCount) => footerUi?.setStatus(FOOTER_KEY, footerText(runningCount)),
+    onChange: (runningCount) => {
+      backgroundRunning = runningCount;
+      refreshFooter();
+    },
   });
+
+  /** Counts a subagent that the model waits for, so the footer shows it too. */
+  async function countingForeground<T>(work: () => Promise<T>): Promise<T> {
+    foregroundRunning += 1;
+    refreshFooter();
+    try {
+      return await work();
+    } finally {
+      foregroundRunning -= 1;
+      refreshFooter();
+    }
+  }
 
   function cancelAllAndClearFooter(): void {
     background.cancelAll();
+    try {
+      footerUi?.setStatus(FOOTER_KEY, undefined);
+    } catch {
+      // The ui may be gone already.
+    }
     footerUi = undefined;
   }
 
@@ -117,7 +148,6 @@ export default function (pi: ExtensionAPI): void {
     if (!context.hasUI) throw new Error("A background subagent needs an interactive session. Run it without background.");
     const settings = prepareChild(params, context);
     background.setMaxRunning(settings.config.maxBackground);
-    footerUi = context.ui;
     const started = background.start({
       task: params.task,
       run: async (signal) => outcomeOf(await runPrepared(settings, context.cwd, signal)),
@@ -144,7 +174,8 @@ export default function (pi: ExtensionAPI): void {
     async execute(_toolCallId, params, signal, _onUpdate, context) {
       if (params.background) return startInBackground(params, context);
 
-      const outcome = outcomeOf(await runPrepared(prepareChild(params, context), context.cwd, signal));
+      const settings = prepareChild(params, context);
+      const outcome = outcomeOf(await countingForeground(() => runPrepared(settings, context.cwd, signal)));
       if (outcome.error !== undefined) throw new Error(outcome.error);
       return textResult(outcome.text);
     },
@@ -172,9 +203,15 @@ export default function (pi: ExtensionAPI): void {
     },
   });
 
+  pi.on("session_start", (_event, context) => {
+    footerUi = context.ui;
+    refreshFooter();
+  });
+
   // After the session ends no result can be delivered, so a child that goes on would only waste work.
   // pi aborts the old session before it emits session_shutdown. A result that arrives in between would start a turn in a dying session.
   pi.on("session_shutdown", cancelAllAndClearFooter);
-  pi.on("session_before_switch", cancelAllAndClearFooter);
-  pi.on("session_before_fork", cancelAllAndClearFooter);
+  // A switch or fork can still fail after these events, and then no session_start follows. So they must keep the footer.
+  pi.on("session_before_switch", () => background.cancelAll());
+  pi.on("session_before_fork", () => background.cancelAll());
 }
