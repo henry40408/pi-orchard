@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { CLASSIFIER_SWITCH, completeArguments, MENU_ITEMS, runCommand } from "../src/command.ts";
+import { CLASSIFIER_SWITCH, completeArguments, LOG_SWITCH, MENU_ITEMS, runCommand } from "../src/command.ts";
 import { MODES } from "../src/config/schema.ts";
 import { announceStatus, answerQueries, QUERY_CHANNEL, STATUS_CHANNEL, type StatusMessage } from "../src/handshake.ts";
 import { DecisionHistory } from "../src/history.ts";
@@ -134,6 +134,15 @@ describe("/automode why", () => {
     it("says so when the log is off and nothing was decided", async () => {
       const { run } = setup();
       assert.match((await run("why")).message, /No tool call[\s\S]*log is off/);
+    });
+
+    it("says so when the log was off for some earlier decisions", async () => {
+      const { state, history, cwd } = setup('{"log":{"enabled":true}}');
+      history.record(memory);
+      history.record(memory);
+      const log = new DecisionLog(join(cwd, "a.jsonl"));
+      const result = await runCommand({ args: "why", cwd, state, history, log, loggedDecisions: () => [...logged] });
+      assert.match(result.message, /log was off for some earlier decisions/);
     });
 
     it("does not warn when it reads the log", async () => {
@@ -365,6 +374,18 @@ describe("completions and menu", () => {
     const { run } = setup();
     for (const mode of MODES) assert.notEqual((await run(`mode ${mode}`)).type, "error", mode);
     for (const option of CLASSIFIER_SWITCH) assert.notEqual((await run(`classifier ${option}`)).type, "error", option);
+    for (const option of LOG_SWITCH) assert.notEqual((await run(`log ${option}`)).type, "error", option);
+  });
+
+  it("turns the log on and off for this session, and completes the options", async () => {
+    const { state, cwd, run } = setup();
+    assert.match((await run("log on")).message, /log is on/);
+    assert.equal(state.config(cwd).log.enabled, true);
+    await run("log off");
+    assert.equal(state.config(cwd).log.enabled, false);
+    assert.equal((await run("log maybe")).type, "error");
+    assert.equal((await run("log")).type, "error");
+    assert.deepEqual(completeArguments("log o").map((item) => item.value), ["log on", "log off"]);
   });
 });
 

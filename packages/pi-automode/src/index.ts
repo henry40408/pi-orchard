@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { CLASSIFIER_SWITCH, completeArguments, MENU_ITEMS, runCommand } from "./command.ts";
+import { CLASSIFIER_SWITCH, completeArguments, LOG_SWITCH, MENU_ITEMS, runCommand } from "./command.ts";
 import { MODES } from "./config/schema.ts";
 import { showMenu } from "./menu.ts";
 import { toggleRow, type MenuRow } from "./menu-model.ts";
@@ -12,16 +12,16 @@ import { DecisionHistory } from "./history.ts";
 import { DecisionLog, LOG_FILE_ENV, logDirectory, logFileName, pruneOldLogs, readLoggedDecisions, sessionLogFiles } from "./log.ts";
 import type { Config } from "./config/schema.ts";
 import { createPiComplete, withClassifierModelFromEnvironment } from "./model.ts";
-import { AutomodeState, parentModeFromEnvironment } from "./state.ts";
+import { AutomodeState, parentLogEnabledFromEnvironment, parentModeFromEnvironment } from "./state.ts";
 
 const ENTRY_PATH = fileURLToPath(import.meta.url);
 
 export default function (pi: ExtensionAPI): void {
   const agentDir = getAgentDir();
-  const state = new AutomodeState(agentDir, parentModeFromEnvironment(process.env));
-  const history = new DecisionHistory();
-  // Only a child pi takes its classifier model from the environment; a user's own variable must not change a normal session.
+  // Only a child pi takes its settings from the environment; a user's own variable must not change a normal session.
   const isChild = parentModeFromEnvironment(process.env) !== undefined;
+  const state = new AutomodeState(agentDir, parentModeFromEnvironment(process.env), isChild ? parentLogEnabledFromEnvironment(process.env) : undefined);
+  const history = new DecisionHistory();
   const classifierFor = (classifier: Config["classifier"]) => (isChild ? withClassifierModelFromEnvironment(classifier, process.env) : classifier);
   // One file per session. A child pi writes to its parent's file instead.
   let log: DecisionLog | undefined;
@@ -32,8 +32,8 @@ export default function (pi: ExtensionAPI): void {
   function statusMessage(cwd?: string): StatusMessage {
     try {
       const status = state.status(cwd);
-      const { classifier } = state.config(state.cwd());
-      return { ...status, entry: ENTRY_PATH, logFile: log?.file, classifierModel: classifierFor(classifier).model };
+      const { classifier, log: logSettings } = state.config(state.cwd());
+      return { ...status, entry: ENTRY_PATH, logFile: log?.file, classifierModel: classifierFor(classifier).model, logEnabled: logSettings.enabled };
     } catch {
       return { mode: "ask", active: true, entry: ENTRY_PATH };
     }
@@ -81,10 +81,11 @@ export default function (pi: ExtensionAPI): void {
     // Only the terminal can draw a custom component. RPC mode has a UI that cannot.
     if (context.mode !== "tui") return ["status"];
     const { mode } = state.status(context.cwd);
-    const { classifier } = state.config(context.cwd);
+    const { classifier, log: logSettings } = state.config(context.cwd);
     const rows: MenuRow[] = [
       toggleRow("mode", MODES, mode),
       toggleRow("classifier", CLASSIFIER_SWITCH, classifier.enabled ? "on" : "off"),
+      toggleRow("log", LOG_SWITCH, logSettings.enabled ? "on" : "off"),
       ...MENU_ITEMS.map((item): MenuRow => ({ kind: "action", ...item })),
     ];
     return (await showMenu(context.ui, rows)) ?? [];

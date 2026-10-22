@@ -3,7 +3,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { AutomodeState, configPaths, PARENT_MODE_ENV, parentModeFromEnvironment } from "../src/state.ts";
+import { LOG_ENABLED_ENV } from "../src/log.ts";
+import { AutomodeState, configPaths, PARENT_MODE_ENV, parentLogEnabledFromEnvironment, parentModeFromEnvironment } from "../src/state.ts";
 
 function setup(userConfig?: string) {
   const root = mkdtempSync(join(tmpdir(), "automode-state-"));
@@ -65,6 +66,37 @@ describe("AutomodeState", () => {
     assert.equal(child.config(cwd).mode, "ask");
     child.reload(cwd);
     assert.equal(child.config(cwd).mode, "rules");
+  });
+
+  it("setLogEnabled overrides the config until reload, and refuses while a file is invalid", () => {
+    const { state, cwd } = setup('{"log":{"enabled":true}}');
+    assert.equal(state.config(cwd).log.enabled, true);
+    assert.equal(state.setLogEnabled(cwd, false), undefined);
+    assert.equal(state.config(cwd).log.enabled, false);
+    state.reload(cwd);
+    assert.equal(state.config(cwd).log.enabled, true);
+
+    const broken = setup("{ not json");
+    assert.match(broken.state.setLogEnabled(broken.cwd, true) ?? "", /invalid/);
+  });
+
+  it("makes a child log when its parent does, whatever its own config and commands say", () => {
+    const { agentDir, cwd } = setup('{"log":{"enabled":false}}');
+    const on = new AutomodeState(agentDir, "auto", true);
+    assert.equal(on.config(cwd).log.enabled, true);
+    on.setLogEnabled(cwd, false);
+    assert.equal(on.config(cwd).log.enabled, true);
+
+    const { agentDir: otherDir, cwd: otherCwd } = setup('{"log":{"enabled":true}}');
+    assert.equal(new AutomodeState(otherDir, "auto", false).config(otherCwd).log.enabled, false);
+    assert.equal(new AutomodeState(otherDir, "auto").config(otherCwd).log.enabled, true);
+  });
+
+  it("reads the parent log switch from the environment", () => {
+    assert.equal(parentLogEnabledFromEnvironment({ [LOG_ENABLED_ENV]: "1" }), true);
+    assert.equal(parentLogEnabledFromEnvironment({ [LOG_ENABLED_ENV]: "0" }), false);
+    assert.equal(parentLogEnabledFromEnvironment({ [LOG_ENABLED_ENV]: "yes" }), undefined);
+    assert.equal(parentLogEnabledFromEnvironment({}), undefined);
   });
 
   it("keeps a stricter own mode over a looser parent mode", () => {

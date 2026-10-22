@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { CLASSIFIER_MODEL_ENV, PARENT_MODE_ENV } from "../src/guard.ts";
+import { CLASSIFIER_MODEL_ENV, LOG_ENABLED_ENV, PARENT_MODE_ENV } from "../src/guard.ts";
 import { buildLaunch, CHILD_ENV } from "../src/launch.ts";
 
 describe("buildLaunch", () => {
@@ -27,6 +27,16 @@ describe("buildLaunch", () => {
     assert.equal(configured.environment[CLASSIFIER_MODEL_ENV], "judge/model");
     const fallback = buildLaunch({ ...base, guard: { kind: "guarded", entry: "/a", mode: "auto" } });
     assert.equal(fallback.environment[CLASSIFIER_MODEL_ENV], "strong/model");
+  });
+
+  it("passes on the log switch of the parent, and drops a stale one", () => {
+    const base = { task: "t", environment: { [LOG_ENABLED_ENV]: "1" } };
+    const off = buildLaunch({ ...base, guard: { kind: "guarded", entry: "/a", mode: "auto", logEnabled: false } });
+    assert.equal(off.environment[LOG_ENABLED_ENV], "0");
+    const on = buildLaunch({ ...base, guard: { kind: "guarded", entry: "/a", mode: "auto", logEnabled: true } });
+    assert.equal(on.environment[LOG_ENABLED_ENV], "1");
+    const unknown = buildLaunch({ ...base, guard: { kind: "guarded", entry: "/a", mode: "auto" } });
+    assert.equal(unknown.environment[LOG_ENABLED_ENV], undefined);
   });
 
   it("does not let a guarded child pick a model when nothing is known to check it", () => {

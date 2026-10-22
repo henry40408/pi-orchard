@@ -2,6 +2,7 @@ import { join, resolve } from "node:path";
 import { loadConfig, type LoadedConfig } from "./config/load.ts";
 import { stricterMode } from "./config/merge.ts";
 import { MODES, type Config, type Mode } from "./config/schema.ts";
+import { LOG_ENABLED_ENV } from "./log.ts";
 import { PATH_TOOLS } from "./permissions/evaluate.ts";
 import { parseRule, RULE_PATTERN } from "./permissions/rule.ts";
 
@@ -26,6 +27,14 @@ export function isMode(value: string): value is Mode {
 
 /** A parent pi sets this for a child pi; the child's mode is then never looser than the parent's. */
 export const PARENT_MODE_ENV = "PI_AUTOMODE_PARENT_MODE";
+
+/** An unset or unknown value means the child follows its own config. */
+export function parentLogEnabledFromEnvironment(environment: Record<string, string | undefined>): boolean | undefined {
+  const value = environment[LOG_ENABLED_ENV];
+  if (value === "1") return true;
+  if (value === "0") return false;
+  return undefined;
+}
 
 /** An unset variable means no floor; a value that is not a mode means the strictest floor. */
 export function parentModeFromEnvironment(environment: Record<string, string | undefined>): Mode | undefined {
@@ -67,17 +76,21 @@ export class AutomodeState {
   #modeOverride: Mode | undefined;
   #sessionRules: PermissionRules = { allow: [], ask: [], deny: [] };
   #classifierOverride: { enabled?: boolean; model?: string } = {};
+  #logOverride: boolean | undefined;
   #parentMode: Mode | undefined;
+  #parentLogEnabled: boolean | undefined;
 
-  constructor(agentDir: string, parentMode?: Mode) {
+  constructor(agentDir: string, parentMode?: Mode, parentLogEnabled?: boolean) {
     this.#agentDir = agentDir;
     this.#parentMode = parentMode;
+    this.#parentLogEnabled = parentLogEnabled;
   }
 
   reload(cwd: string): LoadedConfig {
     this.#modeOverride = undefined;
     this.#sessionRules = { allow: [], ask: [], deny: [] };
     this.#classifierOverride = {};
+    this.#logOverride = undefined;
     return this.#load(cwd);
   }
 
@@ -113,13 +126,16 @@ export class AutomodeState {
         deny: [...config.permissions.deny, ...this.#sessionRules.deny],
       },
       classifier: { ...config.classifier, ...this.#classifierOverride },
+      log: { ...config.log, enabled: this.#logOverride ?? config.log.enabled },
     });
   }
 
   #withParentFloor(config: Config): Config {
-    if (!this.#parentMode) return config;
-    const mode = stricterMode(config.mode, this.#parentMode);
-    return mode === config.mode ? config : { ...config, mode };
+    // A child logs when its parent does, whatever its own files and commands say.
+    const withLog = this.#parentLogEnabled === undefined ? config : { ...config, log: { ...config.log, enabled: this.#parentLogEnabled } };
+    if (!this.#parentMode) return withLog;
+    const mode = stricterMode(withLog.mode, this.#parentMode);
+    return mode === withLog.mode ? withLog : { ...withLog, mode };
   }
 
   /** The permission rules in effect; `session` marks those added with `addRule`. */
@@ -149,6 +165,13 @@ export class AutomodeState {
     const refusal = this.#refusalForInvalidConfig(cwd);
     if (refusal) return refusal;
     this.#classifierOverride.enabled = enabled;
+    return undefined;
+  }
+
+  setLogEnabled(cwd: string, enabled: boolean): string | undefined {
+    const refusal = this.#refusalForInvalidConfig(cwd);
+    if (refusal) return refusal;
+    this.#logOverride = enabled;
     return undefined;
   }
 

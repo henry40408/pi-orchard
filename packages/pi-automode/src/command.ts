@@ -38,6 +38,7 @@ const SUBCOMMANDS: readonly Subcommand[] = [
   { name: "deny", usage: "deny <rule>", description: "Add a deny rule for this session" },
   { name: "rules", usage: "rules", description: "List the rules in effect" },
   { name: "classifier", usage: "classifier <on|off|model <provider/id|default>>", description: "Change the classifier for this session" },
+  { name: "log", usage: "log <on|off>", description: "Turn the decision log on or off for this session" },
   { name: "reload", usage: "reload", description: "Read the config files again and drop the session changes" },
 ];
 
@@ -45,6 +46,7 @@ const USAGE = SUBCOMMANDS.map((subcommand) => subcommand.usage).join("\n");
 const DEFAULT_WHY_COUNT = 10;
 
 const CLASSIFIER_OPTIONS = ["on", "off", "model"];
+export const LOG_SWITCH = ["on", "off"] as const;
 
 export interface Completion {
   value: string;
@@ -62,7 +64,7 @@ export function completeArguments(argumentText: string): Completion[] {
       description,
     }));
   }
-  const options = first === "mode" ? MODES : first === "classifier" ? CLASSIFIER_OPTIONS : [];
+  const options = first === "mode" ? MODES : first === "classifier" ? CLASSIFIER_OPTIONS : first === "log" ? LOG_SWITCH : [];
   const typed = rest.join(" ");
   return options.filter((option) => option.startsWith(typed)).map((option) => ({ value: `${first} ${option}`, label: option }));
 }
@@ -115,17 +117,23 @@ function describeRecord(record: DecisionRecord): string {
 
 interface RecentDecisions {
   records: DecisionRecord[];
-  /** Set when the records come from memory, which has no earlier starts and no subagents. */
+  /** Set when the list is cut short: memory has no earlier starts and no subagents, and the log lacks what was decided while it was off. */
   limit?: string;
 }
 
 // The log has the decisions of earlier starts and of subagents. Memory is used when the log is off or cannot be written.
 function recentDecisions({ state, cwd, history, log, loggedDecisions }: CommandRequest, count: number): RecentDecisions {
-  if (loggedDecisions && log && !log.failure && state.config(cwd).log.enabled) return { records: loggedDecisions(count) };
+  const remembered = history.recent(count);
+  if (loggedDecisions && log && !log.failure && state.config(cwd).log.enabled) {
+    const records = loggedDecisions(count);
+    // The log was off for the first decisions of this run, if memory holds more than the log does.
+    const limit = remembered.length > records.length ? "The log was off for some earlier decisions, so they are missing from this list." : undefined;
+    return { records, limit };
+  }
   const reason = state.config(cwd).log.enabled ? "the log cannot be used" : "the log is off";
   return {
-    records: history.recent(count),
-    limit: `Because ${reason}, this list has only the decisions of this run, and none made by subagents. To see all of them, set {"log":{"enabled":true}} in automode.json.`,
+    records: remembered,
+    limit: `Because ${reason}, this list has only the decisions of this run, and none made by subagents. To see all of them, run /automode log on, or set {"log":{"enabled":true}} in automode.json.`,
   };
 }
 
@@ -207,6 +215,12 @@ function changeClassifier(request: CommandRequest, argumentText: string): Comman
   return error("Usage: /automode classifier <on|off|model <provider/id|default>>");
 }
 
+function changeLog({ state, cwd }: CommandRequest, option: string): CommandResult {
+  if (option !== "on" && option !== "off") return error("Usage: /automode log <on|off>");
+  const refusal = state.setLogEnabled(cwd, option === "on");
+  return refusal ? error(refusal) : info(`The log is ${option} for this session`);
+}
+
 /** `/automode <subcommand> [arguments]`. It only reads and changes `state` and `history`; showing the result is the caller's job. */
 export async function runCommand(request: CommandRequest): Promise<CommandResult> {
   const text = request.args.trim();
@@ -233,6 +247,8 @@ export async function runCommand(request: CommandRequest): Promise<CommandResult
       return addRule(request, subcommand, rest);
     case "rules":
       return listRules(request);
+    case "log":
+      return changeLog(request, rest);
     case "classifier":
       return changeClassifier(request, rest);
     default:

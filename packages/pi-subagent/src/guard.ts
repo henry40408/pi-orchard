@@ -6,6 +6,9 @@ export const PARENT_MODE_ENV = "PI_AUTOMODE_PARENT_MODE";
 /** The child's automode appends to this log file of the parent. Defined by pi-automode. */
 export const LOG_FILE_ENV = "PI_AUTOMODE_LOG_FILE";
 
+/** The child logs when the parent does: `1` or `0`. Defined by pi-automode. */
+export const LOG_ENABLED_ENV = "PI_AUTOMODE_LOG_ENABLED";
+
 /** The child's classifier uses this model, so a child on a cheap model is checked by a strong one. Defined by pi-automode. */
 export const CLASSIFIER_MODEL_ENV = "PI_AUTOMODE_CLASSIFIER_MODEL";
 
@@ -15,7 +18,7 @@ export type GuardPlan =
   /** pi-automode is not installed, so there is nothing to carry over. */
   | { kind: "none" }
   /** The child must load automode from `entry` and may not be looser than `mode`. */
-  | { kind: "guarded"; entry: string; mode: string; logFile?: string; classifierModel?: string }
+  | { kind: "guarded"; entry: string; mode: string; logFile?: string; classifierModel?: string; logEnabled?: boolean }
   /** pi-automode answered, but the answer is unusable. The child is not started. */
   | { kind: "invalid" };
 
@@ -42,7 +45,13 @@ export function queryGuard(events: EventBus): GuardPlan {
 
 function planFromReply(reply: unknown): GuardPlan {
   if (typeof reply !== "object" || reply === null) return { kind: "invalid" };
-  const { mode, entry, logFile, classifierModel } = reply as { mode?: unknown; entry?: unknown; logFile?: unknown; classifierModel?: unknown };
+  const { mode, entry, logFile, classifierModel, logEnabled } = reply as {
+    mode?: unknown;
+    entry?: unknown;
+    logFile?: unknown;
+    classifierModel?: unknown;
+    logEnabled?: unknown;
+  };
   if (typeof mode !== "string" || !MODES.includes(mode)) return { kind: "invalid" };
   if (typeof entry !== "string" || entry === "") return { kind: "invalid" };
   return {
@@ -51,5 +60,6 @@ function planFromReply(reply: unknown): GuardPlan {
     mode,
     ...(typeof logFile === "string" && logFile !== "" && { logFile }),
     ...(typeof classifierModel === "string" && classifierModel !== "" && { classifierModel }),
+    ...(typeof logEnabled === "boolean" && { logEnabled }),
   };
 }

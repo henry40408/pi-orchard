@@ -16,6 +16,8 @@ export interface StatusMessage extends AutomodeStatus {
   logFile?: string;
   /** The classifier model set in the config. Unset means the model of the session. A child is checked by it (see CLASSIFIER_MODEL_ENV in model.ts). */
   classifierModel?: string;
+  /** Whether this session logs. A child logs when its parent does (see LOG_ENABLED_ENV in log.ts). */
+  logEnabled?: boolean;
 }
 
 interface EventBus {

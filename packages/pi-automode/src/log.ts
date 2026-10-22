@@ -10,6 +10,9 @@ import { summarizeInput, type DecisionRecord, type UserAnswer } from "./history.
  */
 export const LOG_FILE_ENV = "PI_AUTOMODE_LOG_FILE";
 
+/** A parent pi sets this to `1` or `0` for a child pi: the child logs when the parent does. */
+export const LOG_ENABLED_ENV = "PI_AUTOMODE_LOG_ENABLED";
+
 export type LogSettings = Config["log"];
 
 /** One decision, as written to the log. The time and the `child` mark are added when it is written. */

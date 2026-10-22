@@ -1,4 +1,4 @@
-import { CLASSIFIER_MODEL_ENV, LOG_FILE_ENV, PARENT_MODE_ENV, type GuardPlan } from "./guard.ts";
+import { CLASSIFIER_MODEL_ENV, LOG_ENABLED_ENV, LOG_FILE_ENV, PARENT_MODE_ENV, type GuardPlan } from "./guard.ts";
 
 /** Set in every child, so that a child does not offer the `subagent` tool and cannot start children. */
 export const CHILD_ENV = "PI_SUBAGENT_CHILD";
@@ -44,6 +44,9 @@ export function buildLaunch(request: LaunchRequest): Launch {
   if (request.guard.kind === "guarded") {
     environment[PARENT_MODE_ENV] = request.guard.mode;
     if (request.guard.logFile) environment[LOG_FILE_ENV] = request.guard.logFile;
+    // The parent's switch beats an inherited variable, and an old parent that sends none must not leave a stale one.
+    delete environment[LOG_ENABLED_ENV];
+    if (request.guard.logEnabled !== undefined) environment[LOG_ENABLED_ENV] = request.guard.logEnabled ? "1" : "0";
     // The child may work on any model, but its tool calls are checked by the model that checks the parent's.
     if (classifierModel) environment[CLASSIFIER_MODEL_ENV] = classifierModel;
   }
