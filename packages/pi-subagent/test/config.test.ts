@@ -28,7 +28,7 @@ describe("loadSubagentConfig", () => {
   });
 
   it("reports a wrong type, a value out of range, a bad model and an unknown key", () => {
-    for (const text of ['{"stallTimeoutMs":"10"}', '{"stallTimeoutMs":5}', '{"maxStderrChars":10}', '{"model":"sonnet"}', '{"timeout":1}']) {
+    for (const text of ['{"stallTimeoutMs":"10"}', '{"stallTimeoutMs":5}', '{"maxStderrChars":10}', '{"maxBackground":0}', '{"maxBackground":17}', '{"model":"sonnet"}', '{"timeout":1}']) {
       assert.ok("errors" in load(text), text);
     }
   });

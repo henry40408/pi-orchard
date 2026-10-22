@@ -10,9 +10,11 @@ export interface SubagentConfig {
   model: string | undefined;
   /** How much of the end of the child's stderr is kept. */
   maxStderrChars: number;
+  /** How many background subagents may run at the same time. */
+  maxBackground: number;
 }
 
-export const DEFAULT_CONFIG: SubagentConfig = { stallTimeoutMs: 600_000, model: undefined, maxStderrChars: 20_000 };
+export const DEFAULT_CONFIG: SubagentConfig = { stallTimeoutMs: 600_000, model: undefined, maxStderrChars: 20_000, maxBackground: 4 };
 
 // additionalProperties: false makes a misspelled key an error instead of silently doing nothing.
 const ConfigFileSchema = Type.Object(
@@ -20,6 +22,7 @@ const ConfigFileSchema = Type.Object(
     stallTimeoutMs: Type.Optional(Type.Integer({ minimum: 10_000, maximum: 3_600_000 })),
     model: Type.Optional(Type.String({ pattern: "^[^/\\s]+/\\S+$" })),
     maxStderrChars: Type.Optional(Type.Integer({ minimum: 1000, maximum: 1_000_000 })),
+    maxBackground: Type.Optional(Type.Integer({ minimum: 1, maximum: 16 })),
   },
   { additionalProperties: false },
 );
