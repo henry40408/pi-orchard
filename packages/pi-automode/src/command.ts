@@ -18,6 +18,8 @@ export interface CommandRequest {
   state: AutomodeState;
   history: DecisionHistory;
   log?: DecisionLog;
+  /** The newest decisions in the log files of this session, across restarts. */
+  loggedDecisions?: (count: number) => DecisionRecord[];
 }
 
 interface Subcommand {
@@ -107,13 +109,20 @@ function describeRecord(record: DecisionRecord): string {
   const time = record.time.toTimeString().slice(0, 8);
   const answer = record.answer ? `, user: ${record.answer}` : "";
   const { action, source, reason } = record.outcome;
-  return `${time} ${record.toolName} ${record.summary}\n  -> ${action} (${source}${answer}): ${reason}`;
+  const who = record.child ? " [child]" : "";
+  return `${time}${who} ${record.toolName} ${record.summary}\n  -> ${action} (${source}${answer}): ${reason}`;
 }
 
-function showHistory({ history }: CommandRequest, countText: string): CommandResult {
+// The log has the decisions of earlier starts and of subagents. Memory is used when the log is off or cannot be written.
+function recentDecisions({ state, cwd, history, log, loggedDecisions }: CommandRequest, count: number): DecisionRecord[] {
+  const logUsable = loggedDecisions && log && !log.failure && state.config(cwd).log.enabled;
+  return logUsable ? loggedDecisions(count) : history.recent(count);
+}
+
+function showHistory(request: CommandRequest, countText: string): CommandResult {
   const count = countText === "" ? DEFAULT_WHY_COUNT : Number(countText);
   if (!Number.isInteger(count) || count < 1) return error(`"${countText}" is not a count. Use a positive number`);
-  const records = history.recent(count);
+  const records = recentDecisions(request, count);
   if (records.length === 0) return info("No tool call has been decided in this session yet");
   return info(records.map(describeRecord).join("\n"));
 }

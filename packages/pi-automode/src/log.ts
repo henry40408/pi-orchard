@@ -1,6 +1,8 @@
-import { appendFileSync, mkdirSync, readdirSync, renameSync, statSync, unlinkSync } from "node:fs";
+import { appendFileSync, closeSync, mkdirSync, openSync, readdirSync, readSync, renameSync, statSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Config } from "./config/schema.ts";
+import type { Outcome } from "./decide.ts";
+import { summarizeInput, type DecisionRecord, type UserAnswer } from "./history.ts";
 
 /**
  * A parent pi sets this for a child pi, so both write to one file. It is the
@@ -39,11 +41,92 @@ export function logDirectory(agentDir: string): string {
   return join(agentDir, LOG_DIRECTORY);
 }
 
+// The end of the id: pi makes UUIDv7 ids, whose start is a timestamp that is the same for every session of the same minute.
+function fileIdOfSession(sessionId: string): string {
+  return sessionId.replace(/[^\w-]/g, "").slice(-12) || "session";
+}
+
 /** The start time comes first, so the files sort by time. */
 export function logFileName(start: Date, sessionId: string): string {
   const time = start.toISOString().slice(0, 19).replaceAll(":", "-");
-  const id = sessionId.replace(/[^\w-]/g, "").slice(0, 8);
-  return `${time}Z-${id || "session"}.jsonl`;
+  return `${time}Z-${fileIdOfSession(sessionId)}.jsonl`;
+}
+
+/** The log files of one session, oldest first. Each start of a resumed session has its own file. */
+export function sessionLogFiles(directory: string, sessionId: string): string[] {
+  const ending = `-${fileIdOfSession(sessionId)}.jsonl`;
+  let names: string[];
+  try {
+    names = readdirSync(directory).filter((name) => LOG_FILE_PATTERN.test(name) && name.replace(/\.1$/, "").endsWith(ending));
+  } catch {
+    return [];
+  }
+  // A rotated file (`.1`) holds older lines than the file with the same name.
+  const sortKey = (name: string) => (name.endsWith(ROTATED_SUFFIX) ? `${name.slice(0, -ROTATED_SUFFIX.length)}\u0000` : `${name}\u0001`);
+  return names.sort((first, second) => (sortKey(first) < sortKey(second) ? -1 : 1)).map((name) => join(directory, name));
+}
+
+const ACTIONS: readonly string[] = ["allow", "ask", "block"];
+const ANSWERS: readonly string[] = ["allowed", "denied", "no-ui"];
+
+function recordFromLogLine(line: string): DecisionRecord | undefined {
+  let entry: Record<string, unknown>;
+  try {
+    entry = JSON.parse(line) as Record<string, unknown>;
+  } catch {
+    // The last line may be half written by another process.
+    return undefined;
+  }
+  const { time, toolName, input, action, source, reason, answer, child } = entry;
+  if (typeof time !== "string" || typeof toolName !== "string") return undefined;
+  if (typeof action !== "string" || !ACTIONS.includes(action)) return undefined;
+  if (typeof source !== "string" || typeof reason !== "string") return undefined;
+  const date = new Date(time);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return {
+    time: date,
+    toolName,
+    summary: summarizeInput(input),
+    outcome: { action, source, reason } as Outcome,
+    ...(typeof answer === "string" && ANSWERS.includes(answer) && { answer: answer as UserAnswer }),
+    ...(child === true && { child }),
+  };
+}
+
+// Only the end of a file is read: it holds the newest lines, and a file can be as large as `maxFileBytes`.
+const MAX_READ_BYTES = 4 * 1024 * 1024;
+
+function readEndOfFile(file: string): string | undefined {
+  let descriptor: number | undefined;
+  try {
+    descriptor = openSync(file, "r");
+    const size = statSync(file).size;
+    const start = Math.max(0, size - MAX_READ_BYTES);
+    const buffer = Buffer.alloc(size - start);
+    readSync(descriptor, buffer, 0, buffer.length, start);
+    const text = buffer.toString("utf8");
+    // A cut start leaves half a line, which would not parse.
+    return start === 0 ? text : text.slice(text.indexOf("\n") + 1);
+  } catch {
+    return undefined;
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
+/** The newest `count` decisions in these files, newest last. Unreadable files and lines are skipped. */
+export function readLoggedDecisions(files: string[], count: number): DecisionRecord[] {
+  if (count <= 0) return [];
+  const records: DecisionRecord[] = [];
+  for (const file of files) {
+    const text = readEndOfFile(file);
+    if (text === undefined) continue;
+    for (const line of text.split("\n")) {
+      const record = line === "" ? undefined : recordFromLogLine(line);
+      if (record) records.push(record);
+    }
+  }
+  return records.slice(-count);
 }
 
 function stringifyEntry(record: Record<string, unknown>): string {

@@ -9,7 +9,7 @@ import { FOOTER_KEY, footerText } from "./footer.ts";
 import { answerQueries, announceStatus, type StatusMessage } from "./handshake.ts";
 import { createToolCallHandler } from "./hook.ts";
 import { DecisionHistory } from "./history.ts";
-import { DecisionLog, LOG_FILE_ENV, logDirectory, logFileName, pruneOldLogs } from "./log.ts";
+import { DecisionLog, LOG_FILE_ENV, logDirectory, logFileName, pruneOldLogs, readLoggedDecisions, sessionLogFiles } from "./log.ts";
 import type { Config } from "./config/schema.ts";
 import { createPiComplete, withClassifierModelFromEnvironment } from "./model.ts";
 import { AutomodeState, parentModeFromEnvironment } from "./state.ts";
@@ -25,6 +25,7 @@ export default function (pi: ExtensionAPI): void {
   const classifierFor = (classifier: Config["classifier"]) => (isChild ? withClassifierModelFromEnvironment(classifier, process.env) : classifier);
   // One file per session. A child pi writes to its parent's file instead.
   let log: DecisionLog | undefined;
+  let sessionId = "";
 
   // If the status cannot be built (say, the config cannot be read), a silent
   // handler would look like "automode is not installed". Report the strictest mode instead.
@@ -43,10 +44,11 @@ export default function (pi: ExtensionAPI): void {
     announceStatus(pi.events, statusMessage(context.cwd));
   }
 
-  function startLog(settings: Config["log"], sessionId: string): void {
+  function startLog(settings: Config["log"], id: string): void {
     const parentFile = process.env[LOG_FILE_ENV];
-    const file = parentFile || join(logDirectory(agentDir), logFileName(new Date(), sessionId));
+    const file = parentFile || join(logDirectory(agentDir), logFileName(new Date(), id));
     log = new DecisionLog(file);
+    sessionId = id;
     if (parentFile || !settings.enabled) return;
     pruneOldLogs({ directory: logDirectory(agentDir), keepDays: settings.keepDays, keepFiles: settings.keepFiles, currentFile: file });
   }
@@ -69,6 +71,10 @@ export default function (pi: ExtensionAPI): void {
     }),
   );
 
+  const loggedDecisions = (count: number) => readLoggedDecisions(sessionLogFiles(logDirectory(agentDir), sessionId), count);
+  // A child writes to the file of its parent, whose name has the id of the parent's session, not the child's own: it reads its memory.
+  const loggedDecisionsOrNone = process.env[LOG_FILE_ENV] ? undefined : loggedDecisions;
+
   // Without arguments, a person uses a menu; with no UI the command shows the status.
   // An empty list means the person closed the menu.
   async function commandsFromMenu(context: Pick<ExtensionContext, "mode" | "ui" | "cwd">): Promise<string[]> {
@@ -90,7 +96,7 @@ export default function (pi: ExtensionAPI): void {
     handler: async (args, context) => {
       const commands = args.trim() === "" ? await commandsFromMenu(context) : [args];
       for (const command of commands) {
-        const result = await runCommand({ args: command, cwd: context.cwd, state, history, log });
+        const result = await runCommand({ args: command, cwd: context.cwd, state, history, log, loggedDecisions: loggedDecisionsOrNone });
         context.ui.notify(result.message, result.type);
       }
       if (commands.length > 0) publishStatus(context);

@@ -10,6 +10,8 @@ export interface DecisionRecord {
   summary: string;
   outcome: Outcome;
   answer?: UserAnswer;
+  /** Set when the decision was made by a subagent. Only the log knows this. */
+  child?: boolean;
 }
 
 const MAX_SUMMARY_LENGTH = 80;

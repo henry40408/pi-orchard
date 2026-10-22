@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, utimesSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { DecisionLog, logFileName, pruneOldLogs, type LogEntry } from "../src/log.ts";
+import { DecisionLog, logFileName, pruneOldLogs, readLoggedDecisions, sessionLogFiles, type LogEntry } from "../src/log.ts";
 
 const entry = (overrides: Partial<LogEntry> = {}): LogEntry => ({
   cwd: "/work",
@@ -25,7 +25,7 @@ const readLines = (file: string) =>
 
 describe("logFileName", () => {
   it("starts with the time so the files sort by time", () => {
-    assert.equal(logFileName(new Date("2026-10-22T12:30:05.123Z"), "ab12cd34-ef56"), "2026-10-22T12-30-05Z-ab12cd34.jsonl");
+    assert.equal(logFileName(new Date("2026-10-22T12:30:05.123Z"), "ab12cd34-ef56"), "2026-10-22T12-30-05Z-b12cd34-ef56.jsonl");
   });
 
   it("keeps odd characters of a session id out of the name", () => {
@@ -142,5 +142,70 @@ describe("pruneOldLogs", () => {
   it("does nothing when the directory does not exist", () => {
     assert.equal(pruneOldLogs({ directory: join(tmpdir(), "automode-no-such-dir"), keepDays: 1, keepFiles: 1, currentFile: "x" }), 0);
     assert.equal(existsSync(join(tmpdir(), "automode-no-such-dir")), false);
+  });
+});
+
+describe("sessionLogFiles and readLoggedDecisions", () => {
+  const line = (overrides: Record<string, unknown> = {}) =>
+    JSON.stringify({ time: "2026-10-22T10:00:00.000Z", toolName: "bash", input: { command: "make" }, action: "allow", source: "rule", reason: "ok", child: false, ...overrides });
+
+  it("lists the files of one session, oldest first, the rotated file before its successor", () => {
+    const directory = mkdtempSync(join(tmpdir(), "automode-session-"));
+    for (const name of [
+      "2026-10-22T11-00-00Z-4a9f0c1b2d3e.jsonl",
+      "2026-10-22T10-00-00Z-4a9f0c1b2d3e.jsonl.1",
+      "2026-10-22T10-00-00Z-4a9f0c1b2d3e.jsonl",
+      "2026-10-22T10-30-00Z-4a9f0c1b2d3f.jsonl",
+      "notes.txt",
+    ]) {
+      writeFileSync(join(directory, name), "");
+    }
+    const names = sessionLogFiles(directory, "0192-aaaa-4a9f0c1b2d3e").map((path) => path.slice(directory.length + 1));
+    assert.deepEqual(names, [
+      "2026-10-22T10-00-00Z-4a9f0c1b2d3e.jsonl.1",
+      "2026-10-22T10-00-00Z-4a9f0c1b2d3e.jsonl",
+      "2026-10-22T11-00-00Z-4a9f0c1b2d3e.jsonl",
+    ]);
+  });
+
+  it("returns no files when the directory does not exist", () => {
+    assert.deepEqual(sessionLogFiles(join(tmpdir(), "automode-no-such-dir"), "ab12cd34"), []);
+  });
+
+  it("reads the newest decisions across files, and marks the ones of a child", () => {
+    const directory = mkdtempSync(join(tmpdir(), "automode-read-"));
+    const older = join(directory, "older.jsonl");
+    const newer = join(directory, "newer.jsonl");
+    writeFileSync(older, `${line({ toolName: "read" })}\n${line({ toolName: "write" })}\n`);
+    writeFileSync(newer, `${line({ toolName: "bash", child: true, action: "ask", answer: "denied" })}\n`);
+    const records = readLoggedDecisions([older, newer], 2);
+    assert.deepEqual(records.map((record) => record.toolName), ["write", "bash"]);
+    assert.equal(records[1]?.child, true);
+    assert.equal(records[1]?.answer, "denied");
+    assert.equal(records[1]?.outcome.action, "ask");
+    assert.equal(records[0]?.child, undefined);
+    assert.equal(records[0]?.summary, '{"command":"make"}');
+  });
+
+  it("skips bad lines, a half-written last line and missing files", () => {
+    const directory = mkdtempSync(join(tmpdir(), "automode-bad-"));
+    const file = join(directory, "a.jsonl");
+    writeFileSync(file, `not json\n${line({ action: "maybe" })}\n${line({ time: "yesterday" })}\n${line({ toolName: "ok" })}\n{"time":"2026-10`);
+    const records = readLoggedDecisions([join(directory, "missing.jsonl"), file], 10);
+    assert.deepEqual(records.map((record) => record.toolName), ["ok"]);
+  });
+
+  it("reads only the end of a very large file, without its cut first line", () => {
+    const directory = mkdtempSync(join(tmpdir(), "automode-big-"));
+    const file = join(directory, "big.jsonl");
+    const filler = `${line({ toolName: "old", reason: "x".repeat(1000) })}\n`;
+    writeFileSync(file, filler.repeat(6000) + `${line({ toolName: "last" })}\n`);
+    const records = readLoggedDecisions([file], 1000000);
+    assert.equal(records.at(-1)?.toolName, "last");
+    assert.ok(records.length < 6001);
+  });
+
+  it("returns nothing for a count that is not positive", () => {
+    assert.deepEqual(readLoggedDecisions(["/no/file"], 0), []);
   });
 });

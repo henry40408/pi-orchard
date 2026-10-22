@@ -109,6 +109,37 @@ describe("/automode why", () => {
     assert.match(last, /read/);
   });
 
+  describe("with a log", () => {
+    const logged = [{ time: new Date(), toolName: "bash", summary: "{}", outcome: { action: "allow", source: "rule", reason: "ok" }, child: true }] as const;
+    const memory = { toolName: "read", input: {}, outcome: { action: "allow", source: "shortcut", reason: "memory" } } as const;
+
+    it("reads the log, and marks a child", async () => {
+      const { state, history, cwd } = setup('{"log":{"enabled":true}}');
+      history.record(memory);
+      const log = new DecisionLog(join(cwd, "a.jsonl"));
+      const result = await runCommand({ args: "why", cwd, state, history, log, loggedDecisions: () => [...logged] });
+      assert.match(result.message, /\[child\] bash/);
+      assert.doesNotMatch(result.message, /memory/);
+    });
+
+    it("reads the memory when the log is off", async () => {
+      const { state, history, cwd } = setup('{"log":{"enabled":false}}');
+      history.record(memory);
+      const log = new DecisionLog(join(cwd, "a.jsonl"));
+      const result = await runCommand({ args: "why", cwd, state, history, log, loggedDecisions: () => [...logged] });
+      assert.match(result.message, /memory/);
+    });
+
+    it("reads the memory when the log cannot be written", async () => {
+      const { state, history, cwd } = setup('{"log":{"enabled":true}}');
+      history.record(memory);
+      const log = new DecisionLog(join(cwd, "a.jsonl"));
+      log.failure = "disk full";
+      const result = await runCommand({ args: "why", cwd, state, history, log, loggedDecisions: () => [...logged] });
+      assert.match(result.message, /memory/);
+    });
+  });
+
   it("keeps only the newest records and cuts a long input", () => {
     const history = new DecisionHistory(2);
     const outcome = { action: "allow", source: "off", reason: "r" } as const;
