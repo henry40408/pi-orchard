@@ -27,6 +27,13 @@ describe("buildLaunch", () => {
     assert.ok(free.args.includes("weak/model"));
   });
 
+  it("gives a guarded child the log file of the parent, and an unguarded one nothing", () => {
+    const guarded = buildLaunch({ task: "t", guard: { kind: "guarded", entry: "/a", mode: "auto", logFile: "/l/a.jsonl" }, environment: {} });
+    assert.equal(guarded.environment.PI_AUTOMODE_LOG_FILE, "/l/a.jsonl");
+    const free = buildLaunch({ task: "t", guard: { kind: "none" }, environment: {} });
+    assert.equal(free.environment.PI_AUTOMODE_LOG_FILE, undefined);
+  });
+
   it("uses the configured model when none was asked for, except under automode", () => {
     const modelAfterFlag = (args: string[]) => args[args.indexOf("--model") + 1];
     const base = { task: "t", parentModel: "strong/model", defaultModel: "cheap/model", environment: {} };

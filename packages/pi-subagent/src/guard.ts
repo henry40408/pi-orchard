@@ -3,6 +3,8 @@ export const STATUS_CHANNEL = "automode:status";
 export const QUERY_CHANNEL = "automode:query";
 /** The child's automode never runs looser than this mode. Defined by pi-automode. */
 export const PARENT_MODE_ENV = "PI_AUTOMODE_PARENT_MODE";
+/** The child's automode appends to this log file of the parent. Defined by pi-automode. */
+export const LOG_FILE_ENV = "PI_AUTOMODE_LOG_FILE";
 
 const MODES = ["auto", "rules", "ask", "off"];
 
@@ -10,7 +12,7 @@ export type GuardPlan =
   /** pi-automode is not installed, so there is nothing to carry over. */
   | { kind: "none" }
   /** The child must load automode from `entry` and may not be looser than `mode`. */
-  | { kind: "guarded"; entry: string; mode: string }
+  | { kind: "guarded"; entry: string; mode: string; logFile?: string }
   /** pi-automode answered, but the answer is unusable. The child is not started. */
   | { kind: "invalid" };
 
@@ -37,8 +39,9 @@ export function queryGuard(events: EventBus): GuardPlan {
 
 function planFromReply(reply: unknown): GuardPlan {
   if (typeof reply !== "object" || reply === null) return { kind: "invalid" };
-  const { mode, entry } = reply as { mode?: unknown; entry?: unknown };
+  const { mode, entry, logFile } = reply as { mode?: unknown; entry?: unknown; logFile?: unknown };
   if (typeof mode !== "string" || !MODES.includes(mode)) return { kind: "invalid" };
   if (typeof entry !== "string" || entry === "") return { kind: "invalid" };
+  if (typeof logFile === "string" && logFile !== "") return { kind: "guarded", entry, mode, logFile };
   return { kind: "guarded", entry, mode };
 }

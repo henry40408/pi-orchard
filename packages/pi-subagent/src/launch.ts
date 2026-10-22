@@ -1,4 +1,4 @@
-import { PARENT_MODE_ENV, type GuardPlan } from "./guard.ts";
+import { LOG_FILE_ENV, PARENT_MODE_ENV, type GuardPlan } from "./guard.ts";
 
 /** Set in every child, so that a child does not offer the `subagent` tool and cannot start children. */
 export const CHILD_ENV = "PI_SUBAGENT_CHILD";
@@ -39,6 +39,9 @@ export function buildLaunch(request: LaunchRequest): Launch {
   args.push(`Task: ${request.task}`);
 
   const environment: Record<string, string | undefined> = { ...request.environment, [CHILD_ENV]: "1" };
-  if (request.guard.kind === "guarded") environment[PARENT_MODE_ENV] = request.guard.mode;
+  if (request.guard.kind === "guarded") {
+    environment[PARENT_MODE_ENV] = request.guard.mode;
+    if (request.guard.logFile) environment[LOG_FILE_ENV] = request.guard.logFile;
+  }
   return { args, environment };
 }

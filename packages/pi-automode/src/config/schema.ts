@@ -57,6 +57,9 @@ export const ConfigFileSchema = Type.Object(
         {
           enabled: Type.Optional(Type.Boolean()),
           classifierIo: Type.Optional(Type.Boolean()),
+          maxFileBytes: Type.Optional(Type.Integer({ minimum: 1_048_576, maximum: 1_073_741_824 })),
+          keepDays: Type.Optional(Type.Integer({ minimum: 1, maximum: 365 })),
+          keepFiles: Type.Optional(Type.Integer({ minimum: 1, maximum: 10_000 })),
         },
         { additionalProperties: false },
       ),
@@ -86,5 +89,15 @@ export interface Config {
     softDeny: string[];
     hardDeny: string[];
   };
-  log: { enabled: boolean; classifierIo: boolean };
+  log: {
+    enabled: boolean;
+    /** Also log the classifier's prompt and reply. They hold conversation text. */
+    classifierIo: boolean;
+    /** A log file that grows past this is renamed to `<name>.1`, and a new one starts. */
+    maxFileBytes: number;
+    /** Log files older than this are deleted when a session starts. */
+    keepDays: number;
+    /** At most this many log files are kept. */
+    keepFiles: number;
+  };
 }

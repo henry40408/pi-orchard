@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import type { CompleteFn } from "../src/classifier/classify.ts";
 import { createToolCallHandler, type HookContext } from "../src/hook.ts";
 import { DecisionHistory } from "../src/history.ts";
+import { DecisionLog } from "../src/log.ts";
 import { AutomodeState } from "../src/state.ts";
 
 interface Answers {
@@ -34,8 +35,15 @@ function setup(configText: string | undefined, answers: Answers = {}) {
   };
   const complete: CompleteFn = answers.complete ?? (async () => '{"decision":"allow","reason":"fine"}');
   const history = new DecisionHistory();
-  const handler = createToolCallHandler({ state: new AutomodeState(agentDir), completeFor: () => complete, history });
-  return { handler, context, confirms, history };
+  const log = new DecisionLog(join(root, "log", "session.jsonl"));
+  const handler = createToolCallHandler({
+    state: new AutomodeState(agentDir),
+    completeFor: () => complete,
+    history,
+    currentLog: () => log,
+  });
+  const logged = () => (existsSync(log.file) ? readFileSync(log.file, "utf8").trim().split("\n").map((line) => JSON.parse(line)) : []);
+  return { handler, context, confirms, history, logged };
 }
 
 const bash = (command: string) => ({ toolName: "bash", input: { command } });
@@ -192,5 +200,57 @@ describe("tool_call handler", () => {
     };
     assert.equal((await handler(bash("make"), context))?.block, true);
     assert.equal(confirms.length, 1);
+  });
+});
+
+describe("decision log", () => {
+  it("writes nothing while log.enabled is off", async () => {
+    const { handler, context, logged } = setup(undefined);
+    await handler(bash("make"), context);
+    assert.deepEqual(logged(), []);
+  });
+
+  it("writes the decision, the whole input and what the user answered", async () => {
+    const { handler, context, logged } = setup('{"log":{"enabled":true}}', { complete: soft, confirm: true });
+    await handler(bash("git push"), context);
+    const [line] = logged();
+    assert.equal(line.toolName, "bash");
+    assert.deepEqual(line.input, { command: "git push" });
+    assert.equal(line.action, "ask");
+    assert.equal(line.source, "classifier");
+    assert.equal(line.answer, "allowed");
+    assert.equal(line.child, false);
+    assert.equal(line.classifier, undefined);
+  });
+
+  it("writes the classifier prompt and reply only with classifierIo", async () => {
+    const { handler, context, logged } = setup('{"log":{"enabled":true,"classifierIo":true}}', { complete: soft });
+    await handler(bash("git push"), context);
+    const [line] = logged();
+    assert.equal(line.classifier.reply, '{"decision":"soft_deny","reason":"pushes"}');
+    assert.match(line.classifier.user, /git push/);
+  });
+
+  it("does not log a classifier reply that arrived after the timeout", async () => {
+    const late: CompleteFn = () => new Promise((resolve) => setTimeout(() => resolve('{"decision":"allow","reason":"late"}'), 1300));
+    const { handler, context, logged } = setup('{"log":{"enabled":true,"classifierIo":true},"classifier":{"timeoutMs":1000}}', { complete: late });
+    await handler(bash("make"), context);
+    const [line] = logged();
+    assert.match(line.reason, /timed out/);
+    assert.equal(line.classifier, undefined);
+  });
+
+  it("writes a decision that no classifier made without a classifier part", async () => {
+    const { handler, context, logged } = setup('{"log":{"enabled":true,"classifierIo":true},"permissions":{"deny":["Bash(rm:*)"]}}');
+    await handler(bash("rm x"), context);
+    const [line] = logged();
+    assert.equal(line.source, "deny");
+    assert.equal(line.classifier, undefined);
+  });
+
+  it("does not change the decision when the log cannot be written", async () => {
+    const { handler, context } = setup('{"log":{"enabled":true},"permissions":{"deny":["Bash(rm:*)"]}}');
+    const result = await handler(bash("rm x"), context);
+    assert.equal(result?.block, true);
   });
 });

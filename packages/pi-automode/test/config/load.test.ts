@@ -75,6 +75,13 @@ describe("readConfigFile", () => {
     });
   }
 
+  it("accepts the log limits and rejects values out of range", () => {
+    assert.equal(readConfigFile(writeJson("ok.json", { log: { enabled: true, maxFileBytes: 2_000_000, keepDays: 7, keepFiles: 10 } })).status, "ok");
+    for (const log of [{ maxFileBytes: 1000 }, { keepDays: 0 }, { keepFiles: 100_000 }, { keepDays: 1.5 }]) {
+      assert.equal(readConfigFile(writeJson("bad.json", { log })).status, "invalid", JSON.stringify(log));
+    }
+  });
+
   it("treats a directory as invalid", () => {
     assert.equal(readConfigFile(dir).status, "invalid");
   });

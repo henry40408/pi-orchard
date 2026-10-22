@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 import { completeArguments, MENU_ITEMS, runCommand } from "../src/command.ts";
 import { announceStatus, answerQueries, QUERY_CHANNEL, STATUS_CHANNEL, type StatusMessage } from "../src/handshake.ts";
 import { DecisionHistory } from "../src/history.ts";
+import { DecisionLog } from "../src/log.ts";
 import { AutomodeState } from "../src/state.ts";
 
 function setup(userConfig?: string) {
@@ -63,6 +64,25 @@ describe("/automode status, mode and reload", () => {
     writeFileSync(join(cwd, "agent", "automode.json"), '{"mode":"rules"}');
     assert.equal((await run("reload")).type, "info");
     assert.equal(state.status(cwd).mode, "rules");
+  });
+});
+
+describe("/automode status and the log", () => {
+  it("shows the log file only while the log is on, and warns about a write failure", async () => {
+    const off = setup();
+    const log = new DecisionLog(join(off.cwd, "x.jsonl"));
+    const run = (args: string, state: AutomodeState) => runCommand({ args, cwd: off.cwd, state, history: off.history, log });
+    assert.doesNotMatch((await run("status", off.state)).message, /log:/);
+
+    const on = setup('{"log":{"enabled":true}}');
+    const shown = await runCommand({ args: "status", cwd: on.cwd, state: on.state, history: on.history, log });
+    assert.match(shown.message, /log: .*x\.jsonl/);
+    assert.equal(shown.type, "info");
+
+    log.failure = "disk full";
+    const failed = await runCommand({ args: "status", cwd: on.cwd, state: on.state, history: on.history, log });
+    assert.match(failed.message, /log write failed: disk full/);
+    assert.equal(failed.type, "warning");
   });
 });
 

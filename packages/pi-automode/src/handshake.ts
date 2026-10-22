@@ -12,6 +12,8 @@ export const QUERY_CHANNEL = "automode:query";
  */
 export interface StatusMessage extends AutomodeStatus {
   entry: string;
+  /** The log file of this session. A child writes to it too (see LOG_FILE_ENV in log.ts). */
+  logFile?: string;
 }
 
 interface EventBus {

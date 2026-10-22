@@ -17,7 +17,7 @@ export const DEFAULT_CONFIG: Config = {
     softDeny: [DEFAULTS_MARKER],
     hardDeny: [DEFAULTS_MARKER],
   },
-  log: { enabled: false, classifierIo: false },
+  log: { enabled: false, classifierIo: false, maxFileBytes: 10_485_760, keepDays: 14, keepFiles: 100 },
 };
 
 /** Layers the contents of a config file over the defaults. */

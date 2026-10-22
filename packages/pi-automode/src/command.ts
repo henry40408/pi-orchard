@@ -1,6 +1,7 @@
 import { decide } from "./decide.ts";
 import { MODES } from "./config/schema.ts";
 import type { DecisionHistory, DecisionRecord } from "./history.ts";
+import type { DecisionLog } from "./log.ts";
 import { PATH_TOOLS } from "./permissions/evaluate.ts";
 import { createPathContext } from "./permissions/paths.ts";
 import { parseRule } from "./permissions/rule.ts";
@@ -16,6 +17,7 @@ export interface CommandRequest {
   cwd: string;
   state: AutomodeState;
   history: DecisionHistory;
+  log?: DecisionLog;
 }
 
 interface Subcommand {
@@ -82,14 +84,17 @@ function info(message: string): CommandResult {
   return { message, type: "info" };
 }
 
-function describeStatus({ state, cwd }: CommandRequest): CommandResult {
+function describeStatus({ state, cwd, log }: CommandRequest): CommandResult {
   const { mode } = state.status(cwd);
   const { errors, ignored } = state.problems(cwd);
-  const { classifier } = state.config(cwd);
+  const { classifier, log: logSettings } = state.config(cwd);
   const lines = [`automode mode: ${mode}`, `classifier: ${classifier.enabled ? "on" : "off"}, model ${classifier.model ?? "(session model)"}`];
+  if (logSettings.enabled && log) lines.push(`log: ${log.file}`);
+  if (log?.failure) lines.push(`log write failed: ${log.failure}`);
   for (const message of errors) lines.push(`error: ${message}`);
   if (ignored.length > 0) lines.push(`ignored project settings: ${ignored.join(", ")}`);
-  return { message: lines.join("\n"), type: errors.length > 0 ? "error" : "info" };
+  const type = errors.length > 0 ? "error" : log?.failure ? "warning" : "info";
+  return { message: lines.join("\n"), type };
 }
 
 function changeMode({ state, cwd }: CommandRequest, word: string): CommandResult {
