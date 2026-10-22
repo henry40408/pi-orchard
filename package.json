@@ -2,6 +2,15 @@
   "name": "pi-orchard",
   "private": true,
   "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "pi": {
+    "extensions": [
+      "./packages/pi-automode/src/index.ts",
+      "./packages/pi-subagent/src/index.ts"
+    ]
+  },
   "workspaces": [
     "packages/*"
   ],
