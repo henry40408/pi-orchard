@@ -16,7 +16,13 @@ The two packages work alone. Together, a subagent can do its work on a cheap mod
 
 ## Install
 
-The packages are not on npm. Clone the repository, install the dependencies, and point pi at a package directory:
+The packages are not on npm. Install both from GitHub (add `@<tag>` to pin a release):
+
+```sh
+pi install git:github.com/henry40408/pi-orchard
+```
+
+To read the code first, or to work on it, clone the repository, install the dependencies, and point pi at a package directory:
 
 ```sh
 git clone https://github.com/henry40408/pi-orchard.git
