@@ -3,7 +3,9 @@ import { basename } from "node:path";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
 import { BackgroundRegistry, type BackgroundOutcome, type BackgroundTask } from "./background.ts";
+import { completeArguments, runCommand } from "./command.ts";
 import { FOOTER_KEY, footerText } from "./footer.ts";
+import { showMenu } from "./menu.ts";
 import { queryGuard } from "./guard.ts";
 import { configPath, DEFAULT_CONFIG, loadSubagentConfig, type SubagentConfig } from "./config.ts";
 import { buildLaunch, CHILD_ENV } from "./launch.ts";
@@ -200,6 +202,58 @@ export default function (pi: ExtensionAPI): void {
       const problem = background.cancel(params.id);
       if (problem) throw new Error(problem);
       return textResult(`Cancelled ${params.id}.`);
+    },
+  });
+
+  const runningIds = () =>
+    background
+      .list()
+      .filter((task) => task.status === "running")
+      .map((task) => task.id);
+
+  // A cancelled task sends no result, so without this note the model would wait for an answer that never comes.
+  function tellModelAboutCancels(runningBefore: string[]): void {
+    const stillRunning = new Set(runningIds());
+    const cancelled = runningBefore.filter((id) => !stillRunning.has(id) && background.list().find((task) => task.id === id)?.status === "cancelled");
+    if (cancelled.length === 0) return;
+    pi.sendMessage(
+      { customType: "subagent-result", content: `The user cancelled ${cancelled.join(", ")}. No answer will arrive.`, display: true, details: { ids: cancelled, status: "cancelled" } },
+      { deliverAs: "followUp" },
+    );
+  }
+
+  // Without arguments, a person uses a menu. An empty list means the person closed it.
+  async function commandsFromMenu(context: Pick<ExtensionContext, "mode" | "ui">): Promise<string[]> {
+    // Only the terminal can draw a custom component. RPC mode has a UI that cannot.
+    if (context.mode !== "tui") return ["status", "list"];
+    return showMenu(context.ui, () => background.list());
+  }
+
+  pi.registerCommand("subagent", {
+    description: "Manage background subagents: list, cancel, history, status",
+    getArgumentCompletions: (argumentText) =>
+      completeArguments(
+        argumentText,
+        background
+          .list()
+          .filter((task) => task.status === "running")
+          .map((task) => task.id),
+      ),
+    handler: async (args, context) => {
+      const commands = args.trim() === "" ? await commandsFromMenu(context) : [args];
+      for (const command of commands) {
+        const runningBefore = runningIds();
+        const result = runCommand({
+          args: command,
+          registry: background,
+          now: Date.now(),
+          config: loadSubagentConfig(configPath(getAgentDir())),
+          configFile: configPath(getAgentDir()),
+          guard: queryGuard(pi.events),
+        });
+        context.ui.notify(result.message, result.type);
+        tellModelAboutCancels(runningBefore);
+      }
     },
   });
 

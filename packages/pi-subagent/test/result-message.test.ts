@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import type { BackgroundTask } from "../src/background.ts";
 import { formatBackgroundResult } from "../src/result-message.ts";
 
-const task: BackgroundTask = { id: "bg-1", summary: "scan", status: "done", startedAt: 0 };
+const task: BackgroundTask = { id: "bg-1", summary: "scan", task: "scan the repository", status: "done", startedAt: 0 };
 
 describe("formatBackgroundResult", () => {
   it("fences the text and repeats the warning after it", () => {

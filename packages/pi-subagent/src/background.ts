@@ -4,9 +4,13 @@ export interface BackgroundTask {
   id: string;
   /** The start of the task text, for lists. */
   summary: string;
+  /** The whole task text, for the detail view. */
+  task: string;
   status: BackgroundStatus;
   startedAt: number;
   finishedAt?: number;
+  /** Why a failed task failed. */
+  error?: string;
 }
 
 /** What a finished child produced: `error` is set when it failed. */
@@ -70,7 +74,7 @@ export class BackgroundRegistry {
     this.#counter += 1;
     const oneLine = request.task.replace(/\s+/g, " ").trim();
     const summary = oneLine.length > MAX_SUMMARY_CHARS ? `${oneLine.slice(0, MAX_SUMMARY_CHARS - 1)}…` : oneLine;
-    const task: BackgroundTask = { id: `bg-${this.#counter}`, summary, status: "running", startedAt: this.#now() };
+    const task: BackgroundTask = { id: `bg-${this.#counter}`, summary, task: request.task, status: "running", startedAt: this.#now() };
     const entry: Entry = { task, controller: new AbortController() };
     this.#entries.push(entry);
 
@@ -102,6 +106,7 @@ export class BackgroundRegistry {
     if (entry.task.status === "cancelled") return;
     entry.task.status = outcome.error === undefined ? "done" : "failed";
     entry.task.finishedAt = this.#now();
+    if (outcome.error !== undefined) entry.task.error = outcome.error;
     this.#dropOldFinished();
     this.#notifyChange();
     try {
@@ -134,7 +139,7 @@ export class BackgroundRegistry {
     return undefined;
   }
 
-  /** For the end of a session: no result can be delivered any more. */
+  /** Stops every running task without a result message. The caller says why: the session ends, or the user asked. */
   cancelAll(): void {
     for (const entry of this.#entries) {
       if (entry.task.status === "running") this.#stop(entry);

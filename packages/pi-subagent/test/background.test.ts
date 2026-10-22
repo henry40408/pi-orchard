@@ -35,6 +35,15 @@ describe("BackgroundRegistry", () => {
     assert.equal(second.task.summary.length, 80);
   });
 
+  it("keeps the whole task text, and the error of a failed task", async () => {
+    const registry = new BackgroundRegistry({ maxRunning: 4 });
+    const { child } = started(registry, manualChild());
+    assert.equal(registry.list()[0]?.task, "do it");
+    child.finish({ text: "", error: "boom" });
+    await settle();
+    assert.equal(registry.list()[0]?.error, "boom");
+  });
+
   it("refuses a task over the limit, and accepts one again after a task ends", async () => {
     const registry = new BackgroundRegistry({ maxRunning: 1 });
     const { child } = started(registry);

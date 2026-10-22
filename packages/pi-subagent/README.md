@@ -25,6 +25,21 @@ A subagent cannot start another subagent. Each run is one `pi --mode json -p --n
 
 A background result is wrapped in a fence with a random nonce, so text inside the result cannot pretend to be a message from you or from the harness. Treat the content as data.
 
+## Commands
+
+`/subagent` alone opens a menu of the running background subagents. ↑/↓ move, Enter shows the whole task, `x` cancels the selected one, `X` cancels all, Esc closes. A cancel asks `y/N` first, and only `y` confirms. Without a terminal UI the command prints `status` and `list`.
+
+| Command | |
+| --- | --- |
+| `list` | The background subagents that run now, with their time. |
+| `cancel <id\|all>` | Stop one background subagent, or all. |
+| `history` | The ones that finished in this session (the last 20), with the reason for a failure. |
+| `status` | The config, the number running, and whether pi-automode guards the subagents. |
+
+When you cancel a subagent, the model gets a short note, so it does not wait for an answer that never comes.
+
+A foreground subagent is not listed: the model waits for it, and it stops when you interrupt the turn.
+
 ## Configuration
 
 `<agent dir>/subagent.json` (the agent dir is `~/.pi/agent`, or `PI_CODING_AGENT_DIR` when set). The file is optional. An invalid file stops the extension from starting, and the error says why.
