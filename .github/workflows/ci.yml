@@ -15,7 +15,8 @@ permissions:
   contents: read
 
 jobs:
-  typecheck:
+  lint:
+    name: lint
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -33,6 +34,7 @@ jobs:
   # The tests run TypeScript directly with Node, so the Node version is part of what they check.
   # macOS is where the code is written; Linux is where it also runs.
   test:
+    name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -52,6 +54,7 @@ jobs:
       - run: npm test
 
   audit:
+    name: audit
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
