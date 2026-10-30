@@ -90,9 +90,6 @@ export function analyzeBash(command: string): BashAnalysis {
       case "AndOr":
       case "Pipeline":
         return node.commands.forEach((child) => visitNode(child, next));
-      case "Time":
-      case "Negation":
-        return visitNode(node.command, next);
       case "CompoundList":
         return visitList(node, next);
       case "If":
@@ -291,8 +288,7 @@ export function analyzeBash(command: string): BashAnalysis {
         visitWord(expression.left, depth);
         return visitWord(expression.right, depth);
       case "TestLogical":
-        visitTest(expression.left, depth);
-        return visitTest(expression.right, depth);
+        return expression.operands.forEach((operand) => visitTest(operand, depth));
       case "TestNot":
         return visitTest(expression.operand, depth);
       case "TestGroup":
