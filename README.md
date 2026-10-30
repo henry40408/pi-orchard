@@ -1,5 +1,13 @@
 # pi-orchard
 
+[![CI](https://github.com/henry40408/pi-orchard/actions/workflows/ci.yml/badge.svg)](https://github.com/henry40408/pi-orchard/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/henry40408/pi-orchard)](https://github.com/henry40408/pi-orchard/releases/latest)
+[![License](https://img.shields.io/github/license/henry40408/pi-orchard)](LICENSE.txt)
+[![Node](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/henry40408/pi-orchard/main/.node-version&search=(%5Cd%2B)&label=node&logo=nodedotjs&logoColor=white)](.node-version)
+[![pi](https://img.shields.io/badge/pi-%E2%89%A5%201.2.0-blue)](https://github.com/earendil-works/pi)
+[![Casual Maintenance Intended](https://casuallymaintained.tech/badge.svg)](https://casuallymaintained.tech/)
+[![Vibe Coded](https://img.shields.io/badge/vibe_coded-Claude-d97757?logo=anthropic&logoColor=white)](https://claude.com/claude-code)
+
 Extensions for the pi coding agent (`@earendil-works/pi-coding-agent`) that let an agent work with less hand-holding and keep a guard on what it does.
 
 | Package | What it does |
