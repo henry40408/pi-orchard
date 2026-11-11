@@ -38,6 +38,7 @@ An npm workspace with three extensions for the pi coding agent (`@earendil-works
 - A subagent cancel by the user sends the model a note, because a cancelled task sends no result.
 - pi-monitor layers follow the same rule as pi-automode. `core/` takes the process as a `start` function from the host: `pi/` spawns a child, `durable/` runs the command in the `ExecutionEnv` of the Harness (`env.exec`, with its own cancel context, so the command outlives the tool call).
 - The durable monitor lives in memory and is not told about a restart of the host; the host sends the output with `deliver`, because a tool call cannot submit input after it ends.
+- pi-subagent has no durable entry, by design: a durable subagent is a conversation that a tool owns and it copies the extensions of its owner, so pi-automode guards it with no wiring (`test/durable/subagent.test.ts`). The READMEs say so.
 - `monitor` is an alias of `bash` in pi-automode (`SHELL_TOOLS`): same tool name `monitor` and input field `command` on both sides, so change both together. pi-monitor never imports pi-automode.
 - A monitor that exceeds `maxEventsPerMinute` is stopped, not throttled, and the model is told. Every batch of output starts a model turn, by design.
 - Node's strip-only TypeScript mode is used to run the files: no parameter properties, enums or namespaces.

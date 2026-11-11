@@ -138,3 +138,5 @@ registry.install(
 ```
 
 The host passes `cwd`, the classifier function and `isRootConversation`, because a durable hook knows none of them. Only a conversation a person talks to has its user messages offered to the classifier, and only `pi.user` entries count as user messages, never a compaction summary or a handoff. Install the extension after any extension that rewrites tool arguments. A call that needs a question is blocked, as with no UI in pi: the durable version in use cannot park a call for an answer. There are no slash commands; the host changes the `AutomodeState`.
+
+A durable subagent (a conversation that a tool owns) is guarded without more wiring, because it starts as a copy of the agent of its owner and so gets this extension. Return `false` from `isRootConversation` for it. See [`pi-subagent`](../pi-subagent#with-durable).
