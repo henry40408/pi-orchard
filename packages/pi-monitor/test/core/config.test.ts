@@ -3,8 +3,8 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { configPath, DEFAULT_CONFIG, loadMonitorConfig } from "../src/config.ts";
-import { footerText } from "../src/footer.ts";
+import { configPath, DEFAULT_CONFIG, loadMonitorConfig } from "../../src/core/config.ts";
+import { footerText } from "../../src/core/footer.ts";
 
 function load(text?: string) {
   const dir = mkdtempSync(join(tmpdir(), "monitor-config-"));

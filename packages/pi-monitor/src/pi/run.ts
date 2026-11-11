@@ -1,25 +1,9 @@
 import { spawn } from "node:child_process";
+import type { MonitorExit, MonitorProcess, MonitorRunRequest } from "../core/process.ts";
 
-export interface MonitorRunRequest {
-  command: string;
-  cwd: string;
+export interface ShellRunRequest extends MonitorRunRequest {
   /** The shell and its flag, for example `/bin/bash` and `-c`. */
   shell: { path: string; args: string[] };
-  onData: (stream: "stdout" | "stderr", chunk: string) => void;
-}
-
-export interface MonitorExit {
-  exitCode: number | undefined;
-  /** The signal that ended the process, when there was one. */
-  signal: string | undefined;
-  /** Set when the process could not start. */
-  startError: string | undefined;
-}
-
-export interface MonitorProcess {
-  /** Stops the whole process tree: SIGTERM first, SIGKILL after the grace period. */
-  kill(): void;
-  done: Promise<MonitorExit>;
 }
 
 const KILL_GRACE_MS = 5000;
@@ -29,7 +13,7 @@ const KILL_GRACE_MS = 5000;
  * children of the shell (for example the `tail` in `tail -f log | grep x`).
  * The callback gets raw chunks. Splitting them into lines is the caller's job.
  */
-export function startMonitorProcess(request: MonitorRunRequest): MonitorProcess {
+export function startMonitorProcess(request: ShellRunRequest): MonitorProcess {
   const child = spawn(request.shell.path, [...request.shell.args, request.command], {
     cwd: request.cwd,
     detached: process.platform !== "win32",

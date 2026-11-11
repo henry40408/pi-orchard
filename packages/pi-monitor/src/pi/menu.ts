@@ -1,8 +1,8 @@
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { matchesKey, truncateToWidth, type Component, type Keybinding, type TUI } from "@earendil-works/pi-tui";
-import { formatDuration } from "./command.ts";
-import type { MonitorTask } from "./registry.ts";
-import { MenuModel, type MenuKey, type MenuRow } from "./menu-model.ts";
+import { formatDuration } from "../core/command.ts";
+import type { MonitorTask } from "../core/registry.ts";
+import { MenuModel, type MenuKey, type MenuRow } from "../core/menu-model.ts";
 
 // Up, down, confirm and cancel follow the keybindings of pi, so a remapped key or ctrl+c works as in other menus.
 const BOUND_KEYS: ReadonlyArray<[MenuKey, Keybinding]> = [

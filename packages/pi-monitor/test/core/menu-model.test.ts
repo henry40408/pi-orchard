@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { MonitorTask } from "../src/registry.ts";
-import { MenuModel } from "../src/menu-model.ts";
+import type { MonitorTask } from "../../src/core/registry.ts";
+import { MenuModel } from "../../src/core/menu-model.ts";
 
 function task(id: string, status: MonitorTask["status"] = "running"): MonitorTask {
   return { id, description: `description ${id}`, command: `command ${id}`, status, startedAt: 0 };

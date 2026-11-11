@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { MonitorRegistry } from "../src/registry.ts";
+import { MonitorRegistry } from "../../src/core/registry.ts";
 
 function request(description = "watch", kill: () => void = () => {}) {
   return { description, command: "tail -f log", kill };

@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { Timers } from "../src/batcher.ts";
-import { DEFAULT_CONFIG, type MonitorConfig } from "../src/config.ts";
-import { launchMonitor } from "../src/monitor.ts";
-import { MonitorRegistry } from "../src/registry.ts";
-import type { MonitorExit, MonitorRunRequest } from "../src/run.ts";
+import type { Timers } from "../../src/core/batcher.ts";
+import { DEFAULT_CONFIG, type MonitorConfig } from "../../src/core/config.ts";
+import { launchMonitor } from "../../src/core/monitor.ts";
+import { MonitorRegistry } from "../../src/core/registry.ts";
+import type { MonitorExit, MonitorRunRequest } from "../../src/core/process.ts";
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -56,7 +56,6 @@ function setup(overrides: Partial<MonitorConfig> = {}, options: { includeStderr?
     command: "tail -f log",
     description: "watch the log",
     cwd: ".",
-    shell: { path: "/bin/sh", args: ["-c"] },
     config,
     filter: options.filter ?? (() => true),
     includeStderr: options.includeStderr ?? false,
@@ -161,7 +160,6 @@ describe("launchMonitor", () => {
       command: "x",
       description: "x",
       cwd: ".",
-      shell: { path: "/bin/sh", args: ["-c"] },
       config: DEFAULT_CONFIG,
       filter: () => true,
       includeStderr: false,
@@ -175,7 +173,7 @@ describe("launchMonitor", () => {
     assert.equal(registry.list()[0]!.status, "failed");
     clock.fire(DEFAULT_CONFIG.maxRuntimeMs);
     assert.deepEqual(sent, []);
-    assert.ok("task" in launchMonitor({ registry, command: "y", description: "y", cwd: ".", shell: { path: "/bin/sh", args: ["-c"] }, config: DEFAULT_CONFIG, filter: () => true, includeStderr: false, send: () => {}, start: fakeProcess().start, timers: fakeTimers().timers }));
+    assert.ok("task" in launchMonitor({ registry, command: "y", description: "y", cwd: ".", config: DEFAULT_CONFIG, filter: () => true, includeStderr: false, send: () => {}, start: fakeProcess().start, timers: fakeTimers().timers }));
   });
 
   it("removes control characters from the lines it sends", () => {
@@ -194,7 +192,6 @@ describe("launchMonitor", () => {
         command: "x",
         description: "x",
         cwd: ".",
-        shell: { path: "/bin/sh", args: ["-c"] },
         config: DEFAULT_CONFIG,
         filter: () => true,
         includeStderr: false,
