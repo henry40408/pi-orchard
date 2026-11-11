@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { DEFAULT_CONFIG, resolveConfig } from "../../src/config/defaults.ts";
-import { applyProjectConfig } from "../../src/config/merge.ts";
+import { DEFAULT_CONFIG, resolveConfig } from "../../../src/core/config/defaults.ts";
+import { applyProjectConfig } from "../../../src/core/config/merge.ts";
 
 const user = resolveConfig({
   mode: "auto",

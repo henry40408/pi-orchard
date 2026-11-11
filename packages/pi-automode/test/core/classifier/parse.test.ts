@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { parseAnswer } from "../../src/classifier/parse.ts";
+import { parseAnswer } from "../../../src/core/classifier/parse.ts";
 
 describe("parseAnswer", () => {
   it("reads a bare JSON object", () => {

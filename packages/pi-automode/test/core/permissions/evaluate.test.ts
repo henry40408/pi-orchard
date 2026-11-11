@@ -3,8 +3,8 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { evaluatePermissions, type Permissions } from "../../src/permissions/evaluate.ts";
-import type { PathContext } from "../../src/permissions/paths.ts";
+import { evaluatePermissions, type Permissions } from "../../../src/core/permissions/evaluate.ts";
+import type { PathContext } from "../../../src/core/permissions/paths.ts";
 
 let root: string;
 let pathContext: PathContext;

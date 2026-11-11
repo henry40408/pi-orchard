@@ -3,8 +3,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { LOG_ENABLED_ENV } from "../src/log.ts";
-import { AutomodeState, configPaths, PARENT_MODE_ENV, parentLogEnabledFromEnvironment, parentModeFromEnvironment } from "../src/state.ts";
+import { LOG_ENABLED_ENV } from "../../src/core/log.ts";
+import { AutomodeState, configPaths, PARENT_MODE_ENV, parentLogEnabledFromEnvironment, parentModeFromEnvironment } from "../../src/core/state.ts";
 
 function setup(userConfig?: string) {
   const root = mkdtempSync(join(tmpdir(), "automode-state-"));

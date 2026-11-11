@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { matchesPathSpecifier, mayMatchInside, type PathContext, pathForms, symlinkTarget } from "../../src/permissions/paths.ts";
+import { matchesPathSpecifier, mayMatchInside, type PathContext, pathForms, symlinkTarget } from "../../../src/core/permissions/paths.ts";
 
 let root: string;
 let context: PathContext;

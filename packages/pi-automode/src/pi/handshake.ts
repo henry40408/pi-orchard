@@ -1,4 +1,4 @@
-import type { AutomodeStatus } from "./state.ts";
+import type { AutomodeStatus } from "../core/state.ts";
 
 /** pi-automode emits its status here, on session start and whenever it is asked. */
 export const STATUS_CHANNEL = "automode:status";

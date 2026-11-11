@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { parseRule } from "../../src/permissions/rule.ts";
+import { parseRule } from "../../../src/core/permissions/rule.ts";
 
 describe("parseRule", () => {
   it("parses a rule without a specifier", () => {

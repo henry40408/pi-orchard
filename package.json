@@ -7,7 +7,7 @@
   ],
   "pi": {
     "extensions": [
-      "./packages/pi-automode/src/index.ts",
+      "./packages/pi-automode/src/pi/index.ts",
       "./packages/pi-subagent/src/index.ts",
       "./packages/pi-monitor/src/index.ts"
     ]
@@ -20,7 +20,11 @@
     "test": "node --test \"packages/*/test/**/*.test.ts\""
   },
   "devDependencies": {
+    "@earendil-works/chord": "1.5.0",
+    "@earendil-works/pi-ai": "1.5.0",
     "@earendil-works/pi-coding-agent": "1.5.0",
+    "@earendil-works/pi-durable": "1.5.0",
+    "@earendil-works/pi-schema": "1.5.0",
     "@earendil-works/pi-tui": "1.5.0",
     "@types/node": "26.6.6",
     "typebox": "1.4.3",

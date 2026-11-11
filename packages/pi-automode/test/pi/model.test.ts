@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { Config } from "../src/config/schema.ts";
-import { CLASSIFIER_MODEL_ENV, withClassifierModelFromEnvironment } from "../src/model.ts";
+import type { Config } from "../../src/core/config/schema.ts";
+import { CLASSIFIER_MODEL_ENV, withClassifierModelFromEnvironment } from "../../src/pi/model.ts";
 
 describe("withClassifierModelFromEnvironment", () => {
   // Only the model matters here.

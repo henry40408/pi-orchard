@@ -1,18 +1,18 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { CLASSIFIER_SWITCH, completeArguments, LOG_SWITCH, MENU_ITEMS, runCommand } from "./command.ts";
-import { MODES } from "./config/schema.ts";
+import { CLASSIFIER_SWITCH, completeArguments, LOG_SWITCH, MENU_ITEMS, runCommand } from "../core/command.ts";
+import { MODES } from "../core/config/schema.ts";
 import { showMenu } from "./menu.ts";
-import { toggleRow, type MenuRow } from "./menu-model.ts";
-import { FOOTER_KEY, footerText } from "./footer.ts";
+import { toggleRow, type MenuRow } from "../core/menu-model.ts";
+import { FOOTER_KEY, footerText } from "../core/footer.ts";
 import { answerQueries, announceStatus, type StatusMessage } from "./handshake.ts";
 import { createToolCallHandler } from "./hook.ts";
-import { DecisionHistory } from "./history.ts";
-import { DecisionLog, LOG_FILE_ENV, logDirectory, logFileName, pruneOldLogs, readLoggedDecisions, sessionLogFiles } from "./log.ts";
-import type { Config } from "./config/schema.ts";
+import { DecisionHistory } from "../core/history.ts";
+import { DecisionLog, LOG_FILE_ENV, logDirectory, logFileName, pruneOldLogs, readLoggedDecisions, sessionLogFiles } from "../core/log.ts";
+import type { Config } from "../core/config/schema.ts";
 import { createPiComplete, withClassifierModelFromEnvironment } from "./model.ts";
-import { AutomodeState, parentLogEnabledFromEnvironment, parentModeFromEnvironment } from "./state.ts";
+import { AutomodeState, parentLogEnabledFromEnvironment, parentModeFromEnvironment } from "../core/state.ts";
 
 const ENTRY_PATH = fileURLToPath(import.meta.url);
 

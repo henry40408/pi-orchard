@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { MenuModel, toggleRow, type MenuKey } from "../src/menu-model.ts";
+import { MenuModel, toggleRow, type MenuKey } from "../../src/core/menu-model.ts";
 
 function menu() {
   return new MenuModel([

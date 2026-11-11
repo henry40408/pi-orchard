@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { DEFAULT_CONFIG, resolveConfig } from "../../src/config/defaults.ts";
-import { loadConfig, readConfigFile } from "../../src/config/load.ts";
+import { DEFAULT_CONFIG, resolveConfig } from "../../../src/core/config/defaults.ts";
+import { loadConfig, readConfigFile } from "../../../src/core/config/load.ts";
 
 let dir: string;
 
