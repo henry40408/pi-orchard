@@ -1,34 +1,27 @@
 import { getAgentDir, getShellConfig, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
-import { completeArguments, runCommand } from "./command.ts";
-import { configPath, loadMonitorConfig } from "./config.ts";
-import { FOOTER_KEY, footerText } from "./footer.ts";
-import { compileLineFilter } from "./lines.ts";
+import { completeArguments, runCommand } from "../core/command.ts";
+import { configPath, loadMonitorConfig } from "../core/config.ts";
+import { FOOTER_KEY, footerText } from "../core/footer.ts";
+import { compileLineFilter } from "../core/lines.ts";
 import { showMenu } from "./menu.ts";
-import { launchMonitor } from "./monitor.ts";
-import { MonitorRegistry, type MonitorTask } from "./registry.ts";
+import { launchMonitor } from "../core/monitor.ts";
+import { MonitorRegistry, type MonitorTask } from "../core/registry.ts";
+import { describeList, MONITOR_TEXT } from "../core/tool-text.ts";
+import { startMonitorProcess } from "./run.ts";
 
 const Parameters = Type.Object({
-  command: Type.String({
-    description:
-      "A shell command that keeps running and prints one line per event, for example `tail -f app.log | grep --line-buffered ERROR`. " +
-      "Use `--line-buffered` (grep) or an equivalent when you pipe, or the lines arrive late.",
-  }),
-  description: Type.String({ description: "A short phrase that says what you watch for. It is shown in lists and in every message." }),
-  include: Type.Optional(Type.String({ description: "Regex. Only lines that match are sent to you." })),
-  exclude: Type.Optional(Type.String({ description: "Regex. Lines that match are not sent to you." })),
-  includeStderr: Type.Optional(Type.Boolean({ description: "Also send what the command prints on stderr. Default: false." })),
+  command: Type.String({ description: MONITOR_TEXT.command }),
+  description: Type.String({ description: MONITOR_TEXT.description }),
+  include: Type.Optional(Type.String({ description: MONITOR_TEXT.include })),
+  exclude: Type.Optional(Type.String({ description: MONITOR_TEXT.exclude })),
+  includeStderr: Type.Optional(Type.Boolean({ description: MONITOR_TEXT.includeStderr })),
 });
 
-const IdParameters = Type.Object({ id: Type.String({ description: "The id of a monitor, such as mon-1." }) });
+const IdParameters = Type.Object({ id: Type.String({ description: MONITOR_TEXT.id }) });
 
 function textResult(text: string) {
   return { content: [{ type: "text" as const, text }], details: undefined };
-}
-
-function describeList(tasks: MonitorTask[]): string {
-  if (tasks.length === 0) return "No monitors in this session.";
-  return tasks.map((task) => `${task.id}  ${task.status}  ${task.description}`).join("\n");
 }
 
 export default function (pi: ExtensionAPI): void {
@@ -89,11 +82,11 @@ export default function (pi: ExtensionAPI): void {
       command: params.command,
       description: params.description,
       cwd: context.cwd,
-      shell: { path: shell.shell, args: shell.args },
       config: loaded.config,
       filter,
       includeStderr: params.includeStderr ?? false,
       send: sendToModel,
+      start: (run) => startMonitorProcess({ ...run, shell: { path: shell.shell, args: shell.args } }),
     });
     if ("refusal" in launched) throw new Error(launched.refusal);
     return textResult(`Started monitor ${launched.task.id}. Its output will arrive later as new messages, and a last message when it ends.`);
@@ -102,11 +95,7 @@ export default function (pi: ExtensionAPI): void {
   pi.registerTool({
     name: "monitor",
     label: "Monitor",
-    description:
-      "Run a long-lived shell command in the background and get each batch of its output lines as a new message, which wakes you. " +
-      "Use it to wait for an event without polling, for example a log line, a build result or a file change. " +
-      "The command is stopped when it ends, when it prints too many lines, when it runs too long, or when the user cancels it. " +
-      "Filter in the command or with include/exclude: every line that reaches you costs a turn.",
+    description: MONITOR_TEXT.tool,
     parameters: Parameters,
     async execute(_toolCallId, params, _signal, _onUpdate, context) {
       return startMonitor(params, context);
@@ -116,7 +105,7 @@ export default function (pi: ExtensionAPI): void {
   pi.registerTool({
     name: "monitor_list",
     label: "Monitor list",
-    description: "List the monitors of this session and their status.",
+    description: MONITOR_TEXT.list,
     parameters: Type.Object({}),
     async execute() {
       return textResult(describeList(registry.list()));
@@ -126,7 +115,7 @@ export default function (pi: ExtensionAPI): void {
   pi.registerTool({
     name: "monitor_cancel",
     label: "Monitor cancel",
-    description: "Stop a running monitor. No more output arrives for it.",
+    description: MONITOR_TEXT.cancel,
     parameters: IdParameters,
     async execute(_toolCallId, params) {
       const problem = registry.cancel(params.id);

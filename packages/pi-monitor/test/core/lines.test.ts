@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { compileLineFilter, LineSplitter, stripControlCharacters, truncateLine } from "../src/lines.ts";
+import { compileLineFilter, LineSplitter, stripControlCharacters, truncateLine } from "../../src/core/lines.ts";
 
 describe("stripControlCharacters", () => {
   it("removes ESC and other control characters but keeps tabs", () => {

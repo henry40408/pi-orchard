@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { LineBatcher, type Timers } from "../src/batcher.ts";
-import { RateLimiter } from "../src/rate-limiter.ts";
+import { LineBatcher, type Timers } from "../../src/core/batcher.ts";
+import { RateLimiter } from "../../src/core/rate-limiter.ts";
 
 function fakeTimers() {
   const pending = new Map<number, () => void>();

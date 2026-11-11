@@ -8,7 +8,7 @@ An npm workspace with three extensions for the pi coding agent (`@earendil-works
 
 - `packages/pi-automode`: checks every tool call (rules, then a classifier model, then the user). Three layers in `src/` (and `test/`): `core/` (no host imports), `pi/` (the pi extension), `durable/` (an extension for `@earendil-works/pi-durable`).
 - `packages/pi-subagent`: the `subagent` tool and the `/subagent` command. Works alone; when pi-automode is loaded, the child is guarded.
-- `packages/pi-monitor`: the `monitor` tool and the `/monitor` command. Works alone; pi-automode judges a `monitor` call like a `bash` call.
+- `packages/pi-monitor`: the `monitor` tool and the `/monitor` command. Works alone; pi-automode judges a `monitor` call like a `bash` call. Layers in `src/` (and `test/`): `core/` (no host imports), `pi/` (the pi extension), `durable/` (an extension for `@earendil-works/pi-durable`).
 
 ## Commands
 
@@ -36,6 +36,8 @@ An npm workspace with three extensions for the pi coding agent (`@earendil-works
 - A child pi gets its settings from the environment of the parent, and only a child reads them: `PI_AUTOMODE_PARENT_MODE`, `PI_AUTOMODE_LOG_FILE`, `PI_AUTOMODE_LOG_ENABLED`, `PI_AUTOMODE_CLASSIFIER_MODEL`, `PI_SUBAGENT_CHILD`. pi-subagent and pi-automode define the same constants on both sides, so change both together.
 - A subagent may use any model; its tool calls are checked by the classifier model of the parent.
 - A subagent cancel by the user sends the model a note, because a cancelled task sends no result.
+- pi-monitor layers follow the same rule as pi-automode. `core/` takes the process as a `start` function from the host: `pi/` spawns a child, `durable/` runs the command in the `ExecutionEnv` of the Harness (`env.exec`, with its own cancel context, so the command outlives the tool call).
+- The durable monitor lives in memory and is not told about a restart of the host; the host sends the output with `deliver`, because a tool call cannot submit input after it ends.
 - `monitor` is an alias of `bash` in pi-automode (`SHELL_TOOLS`): same tool name `monitor` and input field `command` on both sides, so change both together. pi-monitor never imports pi-automode.
 - A monitor that exceeds `maxEventsPerMinute` is stopped, not throttled, and the model is told. Every batch of output starts a model turn, by design.
 - Node's strip-only TypeScript mode is used to run the files: no parameter properties, enums or namespaces.

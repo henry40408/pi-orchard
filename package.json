@@ -9,7 +9,7 @@
     "extensions": [
       "./packages/pi-automode/src/pi/index.ts",
       "./packages/pi-subagent/src/index.ts",
-      "./packages/pi-monitor/src/index.ts"
+      "./packages/pi-monitor/src/pi/index.ts"
     ]
   },
   "workspaces": [

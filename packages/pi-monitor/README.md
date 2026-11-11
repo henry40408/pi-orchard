@@ -61,3 +61,30 @@ A monitor ends when:
 ## With pi-automode
 
 `pi-monitor` does not depend on `pi-automode`. The contract is the tool name `monitor` and the input field `command`: [`pi-automode`](../pi-automode) judges a `monitor` call like a `bash` call. `bash(...)` rules and the bash analysis apply to the command, and a rule named `monitor` covers the tool as a whole. A subagent never loads `pi-monitor`.
+
+## With durable
+
+The package has three entry points: `./pi` (the pi extension), `./durable` (an extension for [`@earendil-works/pi-durable`](https://github.com/earendil-works/pi/tree/main/packages/durable)) and the shared logic in `src/core`. The durable entry gives the model `monitor`, `monitor_list` and `monitor_cancel`, with the same text and limits.
+
+```ts
+import { createMonitorExtension } from "pi-monitor/durable";
+import { configPath, loadMonitorConfig } from "pi-monitor/core"; // hosts read the same monitor.json
+
+const { extension, stopAll } = createMonitorExtension({
+  loadConfig: () => loadMonitorConfig(configPath(agentDir)),
+  // A tool call ends before the output arrives, so the host sends it to the conversation.
+  deliver: async ({ conversationId, requestId, text }) => {
+    const conversation = await harness.conversation(conversationId, context);
+    await conversation?.submit({ type: "input", content: text, requestId, whenBusy: "followUp" }, context);
+  },
+});
+registry.install(extension);
+// Before harness.close():
+stopAll();
+```
+
+- The command runs in the environment of the Harness (`HarnessOptions.env`), as `bash` does. A Harness without an environment cannot start a monitor.
+- The monitors live in memory. A restart of the host ends them, and the model is not told. This differs from pi, where a session that ends cancels its monitors.
+- `deliver` is the host's job because a tool call cannot send input after it ends. A failed delivery goes to `onDeliveryError`.
+- The package needs `@earendil-works/chord` and `@earendil-works/pi-schema` next to `pi-durable`; all three are optional peer dependencies.
+- With `pi-automode`, install its durable extension after this one. Its `beforeTool` hook judges the `monitor` call like a `bash` call.

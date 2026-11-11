@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { completeArguments, formatDuration, runCommand } from "../src/command.ts";
-import { DEFAULT_CONFIG, type LoadedMonitorConfig } from "../src/config.ts";
-import { MonitorRegistry } from "../src/registry.ts";
+import { completeArguments, formatDuration, runCommand } from "../../src/core/command.ts";
+import { DEFAULT_CONFIG, type LoadedMonitorConfig } from "../../src/core/config.ts";
+import { MonitorRegistry } from "../../src/core/registry.ts";
 
 function setup(config: LoadedMonitorConfig = { config: DEFAULT_CONFIG }) {
   let clock = 1_000_000;

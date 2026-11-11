@@ -4,7 +4,7 @@ import { LineSplitter, stripControlCharacters, truncateLine } from "./lines.ts";
 import { formatBatch, formatEnd, type EndKind } from "./messages.ts";
 import { RateLimiter } from "./rate-limiter.ts";
 import type { MonitorRegistry, MonitorTask } from "./registry.ts";
-import { startMonitorProcess, type MonitorExit } from "./run.ts";
+import type { MonitorExit, MonitorProcess, MonitorRunRequest } from "./process.ts";
 
 const KEPT_LAST_LINES = 10;
 
@@ -12,15 +12,14 @@ export interface LaunchRequest {
   registry: MonitorRegistry;
   command: string;
   description: string;
-  cwd: string;
-  shell: { path: string; args: string[] };
+  cwd?: string;
   config: MonitorConfig;
   filter: (line: string) => boolean;
   includeStderr: boolean;
   /** Hands text to the model. It starts a turn without the user. */
   send: (text: string, task: MonitorTask) => void;
-  /** Replaced in tests. */
-  start?: typeof startMonitorProcess;
+  /** Starts the process. The host decides how: a child process, or the environment of the host. */
+  start: (request: MonitorRunRequest) => MonitorProcess;
   timers?: Timers;
   now?: () => number;
 }
@@ -43,9 +42,9 @@ export function launchMonitor(request: LaunchRequest): LaunchResult {
   const { registry, config } = request;
   const timers = request.timers ?? realTimers;
   const now = request.now ?? Date.now;
-  const start = request.start ?? startMonitorProcess;
+  const { start } = request;
 
-  let process: ReturnType<typeof startMonitorProcess> | undefined;
+  let process: MonitorProcess | undefined;
   const started = registry.start({
     description: request.description,
     command: request.command,
@@ -98,8 +97,7 @@ export function launchMonitor(request: LaunchRequest): LaunchResult {
   try {
     process = start({
       command: request.command,
-      cwd: request.cwd,
-      shell: request.shell,
+      ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
       onData: (stream, chunk) => {
         for (const line of splitters[stream].push(chunk)) handleLine(stream, line);
       },

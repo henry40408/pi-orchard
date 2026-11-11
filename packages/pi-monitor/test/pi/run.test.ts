@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { startMonitorProcess } from "../src/run.ts";
+import { startMonitorProcess } from "../../src/pi/run.ts";
 
 const shell = { path: "/bin/sh", args: ["-c"] };
 
