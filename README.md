@@ -12,11 +12,13 @@ Extensions for the pi coding agent (`@earendil-works/pi-coding-agent`) that let 
 
 | Packages |
 | --- |
-| [`pi-automode`](packages/pi-automode) Checks every tool call before it runs. Permission rules decide the clear cases; a classifier model judges the rest; anything unclear goes to you. |
-| [`pi-subagent`](packages/pi-subagent) Gives the agent a `subagent` tool that runs a task in a separate pi process, in the foreground or in the background. When `pi-automode` is installed, the subagent is guarded too. |
-| [`pi-monitor`](packages/pi-monitor) Gives the agent a `monitor` tool that runs a long-lived command and wakes the model with each batch of its output. When `pi-automode` is installed, the command is checked like a `bash` call. |
+| [`pi-automode`](packages/pi-automode) checks every tool call before it runs. Permission rules decide the clear cases; a classifier model judges the rest; anything unclear goes to you. |
+| [`pi-subagent`](packages/pi-subagent) gives the agent a `subagent` tool that runs a task in a separate pi process, in the foreground or in the background. When `pi-automode` is installed, the subagent is guarded too. |
+| [`pi-monitor`](packages/pi-monitor) gives the agent a `monitor` tool that runs a long-lived command and wakes the model with each batch of its output. When `pi-automode` is installed, the command is checked like a `bash` call. |
 
 The packages work alone. Together, a subagent can do its work on a cheap model while its tool calls are checked by a stronger one, and a monitored command goes through the same rules as any shell command.
+
+With `@earendil-works/pi-durable`, `pi-automode` and `pi-monitor` have a durable entry. `pi-subagent` has none: see [its README](packages/pi-subagent#with-durable).
 
 ## Requirements
 

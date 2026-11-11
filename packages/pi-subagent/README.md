@@ -68,3 +68,15 @@ The settings travel in the environment of the child process: `PI_AUTOMODE_PARENT
 
 - A cancelled subagent gets a termination signal first and is killed after 5 seconds if it stays alive.
 - A subagent is a full agent with tools. Give it a narrow `tools` list when the task needs little.
+
+## With durable
+
+`pi-subagent` has no entry for [`@earendil-works/pi-durable`](https://github.com/earendil-works/pi/tree/main/packages/durable), and none is planned. The two work in different ways: this package starts a separate `pi` process, while durable runs a subagent as a conversation that the calling tool owns, inside the same Harness. Its README shows both a foreground and a background subagent tool (examples 21 and 22). A port would be a rewrite that shares only the config and the result text.
+
+You can still guard a durable subagent with [`pi-automode`](../pi-automode#with-durable), and it needs no extra wiring:
+
+- A conversation that a task owns starts as a copy of the agent of its owner, so it gets the same extensions. The guard of `pi-automode` then checks every tool call of the subagent. Do not remove the automode extension when you configure the child.
+- Return `false` from `isRootConversation` for the subagent. Its "user" messages come from the parent model, so they are not shown to the classifier as what the user asked for.
+- No person answers the subagent, so a call that needs a question is blocked, and the reason goes back to the subagent. This is the same as in pi.
+
+The `PI_*` environment variables of the [pi side](#with-pi-automode) do not apply: there is no child process to pass them to.
