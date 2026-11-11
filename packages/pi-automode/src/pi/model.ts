@@ -1,6 +1,6 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { CompleteFn } from "./classifier/classify.ts";
-import type { Config } from "./config/schema.ts";
+import type { CompleteFn } from "../core/classifier/classify.ts";
+import type { Config } from "../core/config/schema.ts";
 
 type ModelContext = Pick<ExtensionContext, "model" | "modelRegistry">;
 

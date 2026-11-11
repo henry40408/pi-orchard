@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { classify, type ClassifyRequest, type CompleteFn } from "../../src/classifier/classify.ts";
-import { buildPrompt } from "../../src/classifier/prompt.ts";
+import { classify, type ClassifyRequest, type CompleteFn } from "../../../src/core/classifier/classify.ts";
+import { buildPrompt } from "../../../src/core/classifier/prompt.ts";
 
 const rules = {
   environment: ["env rule"],

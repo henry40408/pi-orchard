@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { collectConversation, type ContextEntry } from "../../src/classifier/context.ts";
-import { DEFAULT_ALLOW, expandDefaults } from "../../src/classifier/defaults.ts";
+import { collectConversation, type ContextEntry } from "../../../src/core/classifier/context.ts";
+import { DEFAULT_ALLOW, expandDefaults } from "../../../src/core/classifier/defaults.ts";
 
 const user = (text: string): ContextEntry => ({ type: "message", message: { role: "user", content: text } });
 const assistant = (text: string): ContextEntry => ({

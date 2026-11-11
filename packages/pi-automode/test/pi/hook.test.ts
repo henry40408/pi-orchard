@@ -3,11 +3,11 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import type { CompleteFn } from "../src/classifier/classify.ts";
-import { createToolCallHandler, type HookContext } from "../src/hook.ts";
-import { DecisionHistory } from "../src/history.ts";
-import { DecisionLog } from "../src/log.ts";
-import { AutomodeState } from "../src/state.ts";
+import type { CompleteFn } from "../../src/core/classifier/classify.ts";
+import { createToolCallHandler, type HookContext } from "../../src/pi/hook.ts";
+import { DecisionHistory } from "../../src/core/history.ts";
+import { DecisionLog } from "../../src/core/log.ts";
+import { AutomodeState } from "../../src/core/state.ts";
 
 interface Answers {
   confirm?: boolean;
@@ -89,9 +89,23 @@ describe("decision history", () => {
     assert.equal(history.recent(1)[0]?.answer, "denied");
   });
 
-  it("records an unexpected error as a fallback", async () => {
+  it("records an error of pi's context as a fallback", async () => {
     const { handler, context, history } = setup(undefined);
     const broken = { ...context, get cwd(): string { throw new Error("boom"); } };
+    await handler(bash("make"), broken);
+    assert.equal(history.recent(1)[0]?.outcome.source, "fallback");
+  });
+
+  it("records an unexpected error as a fallback", async () => {
+    const { handler, context, history } = setup(undefined);
+    const broken = {
+      ...context,
+      sessionManager: {
+        getBranch(): never {
+          throw new Error("boom");
+        },
+      },
+    };
     await handler(bash("make"), broken);
     assert.equal(history.recent(1)[0]?.outcome.source, "fallback");
   });

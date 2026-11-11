@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { analyzeBash, matchesBashSpecifier } from "../../src/permissions/bash.ts";
+import { analyzeBash, matchesBashSpecifier } from "../../../src/core/permissions/bash.ts";
 
 // The command each unit runs, as written.
 const written = (command: string) => analyzeBash(command).units.map((unit) => unit.allowForms[0]);

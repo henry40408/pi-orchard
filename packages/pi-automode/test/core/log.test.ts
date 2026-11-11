@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, utimesSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { DecisionLog, logFileName, pruneOldLogs, readLoggedDecisions, sessionLogFiles, type LogEntry } from "../src/log.ts";
+import { DecisionLog, logFileName, pruneOldLogs, readLoggedDecisions, sessionLogFiles, type LogEntry } from "../../src/core/log.ts";
 
 const entry = (overrides: Partial<LogEntry> = {}): LogEntry => ({
   cwd: "/work",

@@ -6,7 +6,7 @@ Guidance for Claude Code (claude.ai/code) in this repository.
 
 An npm workspace with three extensions for the pi coding agent (`@earendil-works/pi-coding-agent`):
 
-- `packages/pi-automode`: checks every tool call (rules, then a classifier model, then the user).
+- `packages/pi-automode`: checks every tool call (rules, then a classifier model, then the user). Three layers in `src/` (and `test/`): `core/` (no host imports), `pi/` (the pi extension), `durable/` (an extension for `@earendil-works/pi-durable`).
 - `packages/pi-subagent`: the `subagent` tool and the `/subagent` command. Works alone; when pi-automode is loaded, the child is guarded.
 - `packages/pi-monitor`: the `monitor` tool and the `/monitor` command. Works alone; pi-automode judges a `monitor` call like a `bash` call.
 
@@ -14,7 +14,7 @@ An npm workspace with three extensions for the pi coding agent (`@earendil-works
 
 - Install: `npm ci` (Node version in `.node-version`; Node runs the `.ts` files directly, there is no build step).
 - Typecheck (CI gate): `npm run typecheck`.
-- Test (CI gate): `npm test`. One file: `node --test packages/pi-automode/test/command.test.ts`.
+- Test (CI gate): `npm test`. One file: `node --test packages/pi-automode/test/core/command.test.ts`.
 - Release: `gh release create --generate-notes`; never edit the manifest `version` or add a `CHANGELOG.md`.
 
 ## Conventions
@@ -39,3 +39,5 @@ An npm workspace with three extensions for the pi coding agent (`@earendil-works
 - `monitor` is an alias of `bash` in pi-automode (`SHELL_TOOLS`): same tool name `monitor` and input field `command` on both sides, so change both together. pi-monitor never imports pi-automode.
 - A monitor that exceeds `maxEventsPerMinute` is stopped, not throttled, and the model is told. Every batch of output starts a model turn, by design.
 - Node's strip-only TypeScript mode is used to run the files: no parameter properties, enums or namespaces.
+- pi-automode layers: `core/` never imports pi, `pi-tui` or `pi-durable`; `pi/` and `durable/` import `core/` only, never each other. The judging and the recording of a call live in `core/guard.ts`; an adapter only builds the `GuardCall` and acts on the outcome.
+- `pi-durable` is an optional peer dependency and is pinned to a release over 7 days old (1.5.0). In that release a `beforeTool` hook cannot park a call, so the durable adapter blocks an `ask` outcome, as pi does with no UI. When a newer release is over 7 days old, `ask` can sleep on a signal instead.

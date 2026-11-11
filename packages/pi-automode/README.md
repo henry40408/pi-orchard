@@ -111,3 +111,30 @@ Off by default. When on (`log.enabled`, or `/automode log on`), each decision is
 ## With pi-subagent
 
 [`pi-subagent`](../pi-subagent) finds automode through pi's event bus. A subagent then loads only automode, runs no looser than the parent's mode, shares the parent's log file and log switch, and is checked by the classifier model of the parent. See its README.
+
+## With durable
+
+The same guard runs in [`@earendil-works/pi-durable`](https://github.com/earendil-works/pi/tree/main/packages/durable) (experimental, optional peer dependency). The package has three entry points:
+
+| Import | What it is |
+|---|---|
+| `pi-automode/core` | The guard, without pi or durable: rules, classifier, config, decision log. |
+| `pi-automode/pi` | The pi extension (the default one that pi loads). |
+| `pi-automode/durable` | `createAutomodeExtension()`: a durable extension that checks every tool call. |
+
+```ts
+import { createAutomodeExtension } from "pi-automode/durable";
+import { AutomodeState, DecisionHistory } from "pi-automode/core";
+
+registry.install(
+  createAutomodeExtension({
+    state: new AutomodeState(agentDir),
+    cwd: process.cwd(),
+    isRootConversation: (id) => id === rootConversation.id, // other conversations (subagents) get no "user" messages
+    completeFor: (classifier) => myCompleteFunction(classifier), // sends the classifier prompt to a model
+    history: new DecisionHistory(),
+  }),
+);
+```
+
+The host passes `cwd`, the classifier function and `isRootConversation`, because a durable hook knows none of them. Only a conversation a person talks to has its user messages offered to the classifier, and only `pi.user` entries count as user messages, never a compaction summary or a handoff. Install the extension after any extension that rewrites tool arguments. A call that needs a question is blocked, as with no UI in pi: the durable version in use cannot park a call for an answer. There are no slash commands; the host changes the `AutomodeState`.

@@ -3,8 +3,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { FOOTER_KEY, footerText } from "../src/footer.ts";
-import { AutomodeState } from "../src/state.ts";
+import { FOOTER_KEY, footerText } from "../../src/core/footer.ts";
+import { AutomodeState } from "../../src/core/state.ts";
 
 function setup(userConfig?: string) {
   const root = mkdtempSync(join(tmpdir(), "automode-footer-"));

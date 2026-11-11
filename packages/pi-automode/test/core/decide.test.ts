@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { ClassifierVerdict } from "../src/classifier/classify.ts";
-import { DEFAULT_CONFIG } from "../src/config/defaults.ts";
-import type { Config } from "../src/config/schema.ts";
-import { decide } from "../src/decide.ts";
-import { createPathContext } from "../src/permissions/paths.ts";
+import type { ClassifierVerdict } from "../../src/core/classifier/classify.ts";
+import { DEFAULT_CONFIG } from "../../src/core/config/defaults.ts";
+import type { Config } from "../../src/core/config/schema.ts";
+import { decide } from "../../src/core/decide.ts";
+import { createPathContext } from "../../src/core/permissions/paths.ts";
 
 const pathContext = createPathContext(process.cwd());
 

@@ -3,12 +3,11 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { CLASSIFIER_SWITCH, completeArguments, LOG_SWITCH, MENU_ITEMS, runCommand } from "../src/command.ts";
-import { MODES } from "../src/config/schema.ts";
-import { announceStatus, answerQueries, QUERY_CHANNEL, STATUS_CHANNEL, type StatusMessage } from "../src/handshake.ts";
-import { DecisionHistory } from "../src/history.ts";
-import { DecisionLog } from "../src/log.ts";
-import { AutomodeState } from "../src/state.ts";
+import { CLASSIFIER_SWITCH, completeArguments, LOG_SWITCH, MENU_ITEMS, runCommand } from "../../src/core/command.ts";
+import { MODES } from "../../src/core/config/schema.ts";
+import { DecisionHistory } from "../../src/core/history.ts";
+import { DecisionLog } from "../../src/core/log.ts";
+import { AutomodeState } from "../../src/core/state.ts";
 
 function setup(userConfig?: string) {
   const root = mkdtempSync(join(tmpdir(), "automode-command-"));
@@ -386,38 +385,5 @@ describe("completions and menu", () => {
     assert.equal((await run("log maybe")).type, "error");
     assert.equal((await run("log")).type, "error");
     assert.deepEqual(completeArguments("log o").map((item) => item.value), ["log on", "log off"]);
-  });
-});
-
-describe("handshake", () => {
-  function fakeBus() {
-    const handlers = new Map<string, Array<(data: unknown) => void>>();
-    const emitted: Array<[string, unknown]> = [];
-    return {
-      emitted,
-      emit(channel: string, data: unknown) {
-        emitted.push([channel, data]);
-        for (const handler of handlers.get(channel) ?? []) handler(data);
-      },
-      on(channel: string, handler: (data: unknown) => void) {
-        handlers.set(channel, [...(handlers.get(channel) ?? []), handler]);
-        return () => handlers.set(channel, (handlers.get(channel) ?? []).filter((candidate) => candidate !== handler));
-      },
-    };
-  }
-
-  it("announces the status", () => {
-    const bus = fakeBus();
-    const message: StatusMessage = { mode: "auto", active: true, entry: "/x/index.ts" };
-    announceStatus(bus, message);
-    assert.deepEqual(bus.emitted, [[STATUS_CHANNEL, message]]);
-  });
-
-  it("answers a query with the current status", () => {
-    const bus = fakeBus();
-    const status: StatusMessage = { mode: "rules", active: true, entry: "/x/index.ts" };
-    answerQueries(bus, () => status);
-    bus.emit(QUERY_CHANNEL, undefined);
-    assert.deepEqual(bus.emitted.at(-1), [STATUS_CHANNEL, status]);
   });
 });
