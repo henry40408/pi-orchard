@@ -14,7 +14,7 @@ export const DEFAULT_ALLOW = [
   "Creating, editing and deleting files inside the working directory when the task needs it.",
   "Running the project's own build, test, lint, format and type-check commands.",
   "Read-only git commands, and git commits on a local branch.",
-  "Installing dependencies that the project's manifest already lists.",
+  "Installing dependencies that the project's manifest already lists, with a command that reads the manifest (`npm install`, `npm ci`, `pip install -r requirements.txt`, `cargo build`). This does not apply when the agent changed the manifest in this session, or when the agent names the package itself (`npm install foo`, `pip install foo`): those carry typosquat and supply-chain risk.",
 ];
 
 // The user must confirm these, unless an allow exception clearly covers the action.
