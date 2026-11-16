@@ -79,7 +79,7 @@ Rules added with `/automode allow|ask|deny` last until `reload` or the end of th
 The classifier model is a plain model call, not an agent. It answers `allow`, `ask`, or `deny` with a reason, and a timeout or an unusable reply counts as `ask`.
 
 - `model` is `provider/id`. Unset means the model of the current session. A cheaper or stronger one is often a good choice.
-- `environment`, `allow`, `softDeny` and `hardDeny` are plain-language lists that go into the prompt. The marker `"$defaults"` stands for the built-in list; keep it, drop it, or add lines next to it. The built-in lists live in [`src/classifier/defaults.ts`](src/classifier/defaults.ts): `allow` lists routine work to treat as safe, `softDeny` lists actions to ask about, and `hardDeny` lists actions never to allow (credentials, `curl | sh`, tampering with automode itself, mass deletion, reverse shells).
+- `environment`, `allow`, `softDeny` and `hardDeny` are plain-language lists that go into the prompt. The marker `"$defaults"` stands for the built-in list; keep it, drop it, or add lines next to it. The built-in lists live in [`src/core/classifier/defaults.ts`](src/core/classifier/defaults.ts): `allow` lists routine work to treat as safe, `softDeny` lists actions to ask about, and `hardDeny` lists actions never to allow (credentials, `curl | sh`, tampering with automode itself, mass deletion, reverse shells).
 - `context` caps how much conversation (in tokens, roughly four characters each) the classifier sees.
 
 The classifier sends part of your conversation to the model you choose. Pick a provider you already trust with that.
