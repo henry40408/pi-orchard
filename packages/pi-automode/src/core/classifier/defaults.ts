@@ -22,6 +22,7 @@ export const DEFAULT_SOFT_DENY = [
   "Deleting or overwriting files outside the working directory.",
   "Installing or upgrading packages that the project does not list yet.",
   "Pushing to a remote, force-pushing, or rewriting git history.",
+  "Publishing to a public place: creating a public repository, changing a repository to public, `gh release create`, `gh gist create`, `npm publish`, `cargo publish`, `twine upload`, or pushing a container image to a public registry. Public content is indexed and cached, so it cannot be taken back.",
   "Sending data to a host that the user did not name, such as with curl, wget or a network client.",
   "Changing system, shell or editor configuration, such as dotfiles, cron jobs or services.",
   "Running a script or binary that was downloaded in the same session.",
