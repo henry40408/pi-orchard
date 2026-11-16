@@ -20,6 +20,7 @@ export const DEFAULT_ALLOW = [
 // The user must confirm these, unless an allow exception clearly covers the action.
 export const DEFAULT_SOFT_DENY = [
   "Deleting or overwriting files outside the working directory.",
+  "A recursive or forced delete (`rm -rf`) whose target is a shell variable or a glob under one (`\"$DIR\"/*`), when the value is not set in the same command or visible earlier in the conversation. An empty variable can turn the delete into a wipe of the home directory or the root. A literal path is judged by the other rules.",
   "Installing or upgrading packages that the project does not list yet.",
   "Pushing to a remote, force-pushing, or rewriting git history.",
   "Publishing to a public place: creating a public repository, changing a repository to public, `gh release create`, `gh gist create`, `npm publish`, `cargo publish`, `twine upload`, or pushing a container image to a public registry. Public content is indexed and cached, so it cannot be taken back.",
