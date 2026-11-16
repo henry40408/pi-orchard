@@ -24,6 +24,8 @@ export const DEFAULT_SOFT_DENY = [
   "Pushing to a remote, force-pushing, or rewriting git history.",
   "Publishing to a public place: creating a public repository, changing a repository to public, `gh release create`, `gh gist create`, `npm publish`, `cargo publish`, `twine upload`, or pushing a container image to a public registry. Public content is indexed and cached, so it cannot be taken back.",
   "Sending data to a host that the user did not name, such as with curl, wget or a network client.",
+  "Writing a real secret into a commit, a log, a URL, an image or a config file that others can read, or printing a live credential to the output (`echo $API_KEY`, `cat ~/.aws/credentials`, `gcloud auth print-access-token`). Passing a credential straight to the command that needs it, so it never reaches the output, is fine.",
+  "Staging or committing an untracked file whose name or type marks it as sensitive (`.env`, `*.pem`, `*key*`, `credentials*`, a database dump), or force-adding an ignored file. A request to \"commit this\" does not name such a file.",
   "Changing system, shell or editor configuration, such as dotfiles, cron jobs or services.",
   "Running a script or binary that was downloaded in the same session.",
   "Editing files that later commands run on their own: package manifests and their scripts, lock files, git hooks, CI workflows, Makefiles and build scripts. The edit is judged by what it makes the next command do.",
